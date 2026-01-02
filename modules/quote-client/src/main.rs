@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use common::{read_tickers, StockQuote, StockRequest};
+use common::{StockQuote, StockRequest, read_tickers};
 use serde_json::json;
 use std::{
   io::Write,

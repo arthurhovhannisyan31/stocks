@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use common::{read_tickers, StockQuote, StockRequest};
+use common::{StockQuote, StockRequest, read_tickers};
 use serde_json::json;
 use std::{
   collections::HashMap,
@@ -7,7 +7,7 @@ use std::{
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::mpsc::channel,
-  sync::{mpsc, Arc, RwLock, TryLockError},
+  sync::{Arc, RwLock, TryLockError, mpsc},
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
