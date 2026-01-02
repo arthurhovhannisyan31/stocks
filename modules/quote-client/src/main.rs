@@ -1,0 +1,187 @@
+use anyhow::{Context, Result};
+use clap::Parser;
+use common::{read_tickers, StockQuote, StockRequest};
+use serde_json::json;
+use std::{
+  io::Write,
+  net::{SocketAddr, TcpStream, UdpSocket},
+  path::PathBuf,
+  sync::{Arc, RwLock},
+  thread,
+  thread::JoinHandle,
+  time::Duration,
+};
+use tracing::{info, warn};
+
+mod configs;
+use configs::CliArgs;
+
+fn main() -> Result<()> {
+  tracing_subscriber::fmt()
+    .with_line_number(true)
+    .with_thread_ids(true)
+    .init();
+
+  info!("Start client");
+
+  let cli = CliArgs::parse();
+  let CliArgs {
+    server_tcp_addr,
+    client_udp_addr,
+    tickers_file,
+    server_udp_port,
+  } = cli;
+  let tickers = read_tickers(PathBuf::from(tickers_file))?;
+  let client =
+    Client::new(server_tcp_addr, server_udp_port, client_udp_addr, tickers)?;
+
+  info!(server = %server_tcp_addr, server_udp = %server_udp_port, udp_addr = %client_udp_addr, "Initialized client");
+
+  client.run()?;
+
+  Ok(())
+}
+
+#[derive(Debug)]
+struct Client {
+  server_tcp_addr: SocketAddr,
+  server_udp_addr: SocketAddr,
+  tickers: Vec<String>,
+  udp: UdpSocket,
+  shutdown: Arc<RwLock<bool>>,
+}
+
+impl Client {
+  fn new(
+    server_tcp_addr: SocketAddr,
+    server_udp_port: u16,
+    client_udp_addr: SocketAddr,
+    tickers: Vec<String>,
+  ) -> Result<Self> {
+    let mut server_udp_addr = server_tcp_addr.clone();
+    server_udp_addr.set_port(server_udp_port);
+
+    let udp_socket = UdpSocket::bind(client_udp_addr)
+      .with_context(|| format!("Failed binding UDP to {}", client_udp_addr))?;
+    udp_socket
+      .set_read_timeout(Some(Duration::from_secs(2)))
+      .with_context(|| "Failed set_read_timeout for UPD socket".to_string())?;
+
+    Ok(Self {
+      tickers,
+      server_tcp_addr,
+      server_udp_addr,
+      udp: udp_socket,
+      shutdown: Arc::new(RwLock::new(false)),
+    })
+  }
+  fn run(&self) -> Result<()> {
+    info!("Run client");
+
+    let udp_server_thread = self.start_udp_server()?;
+    let healthcheck_thread = self.start_healthcheck_streaming()?;
+    self.send_stream_request()?;
+
+    let _ = healthcheck_thread
+      .join()
+      .expect("Failed waiting on healthcheck_thread")?;
+    let _ = udp_server_thread
+      .join()
+      .expect("Failed waiting for udp server thread");
+
+    Ok(())
+  }
+  fn start_udp_server(&self) -> Result<JoinHandle<Result<()>>> {
+    info!("Start UDP server");
+
+    let shutdown = Arc::clone(&self.shutdown);
+    let udp = self.udp.try_clone().context("Failed cloning UDP socket")?;
+
+    Ok(thread::spawn(move || {
+      let mut buf = vec![0u8; 4 * 1024];
+
+      while !*shutdown.read().expect("Failed reading shutdown value") {
+        match udp.recv(&mut buf) {
+          Ok(n) => {
+            let stock_quotes: Vec<StockQuote> =
+              serde_json::from_slice::<Vec<StockQuote>>(&buf[..n])
+                .context("Failed parsing string to json")?;
+            info!("Gor store quotes: {}", stock_quotes.len());
+            // for stock_quote in stock_quotes {
+            //   info!("Stock data: {stock_quote:?}");
+            // }
+          }
+          Err(e)
+            if [
+              std::io::ErrorKind::TimedOut,
+              std::io::ErrorKind::WouldBlock,
+            ]
+            .contains(&e.kind()) =>
+          {
+            warn!(err = %e, "Failed reading from UDP: ");
+            // Maybe shutdown since server is not sending
+            // Read time out, skip
+          }
+          Err(e) => return Err(e).context("udp_socket.recv failed"),
+        }
+      }
+
+      Ok(())
+    }))
+  }
+  fn send_stream_request(&self) -> Result<()> {
+    info!("Send stream request");
+
+    let mut tcp_stream = TcpStream::connect(&self.server_tcp_addr).context(
+      format!("Failed connecting to server {}", self.server_tcp_addr),
+    )?;
+    tcp_stream
+      .set_nodelay(true)
+      .context("Failed set_nodelay for TCP listener")?;
+    tcp_stream
+      .set_write_timeout(Some(Duration::from_secs(2)))
+      .context("Failed set_nodelay for TCP listener")?;
+
+    let addr = self
+      .udp
+      .local_addr()
+      .context("Failed reading local address")?;
+
+    let stock_request = StockRequest {
+      kind: "STREAM".to_string(),
+      addr,
+      tickers: self.tickers.clone(),
+    };
+    let message = json!(stock_request).to_string();
+    tcp_stream
+      .write(message.as_bytes())
+      .context("Failed writing to TCP stream")?;
+
+    Ok(())
+  }
+  fn start_healthcheck_streaming(&self) -> Result<JoinHandle<Result<()>>> {
+    info!("Start healthcheck streaming");
+
+    let local_addr = self
+      .udp
+      .local_addr()
+      .context("Failed reading local address")?;
+    let udp = self.udp.try_clone().context("Failed cloning udp socket")?;
+    udp
+      .set_write_timeout(Some(Duration::from_secs(2)))
+      .with_context(|| "Failed set_write_timeout for UPD socket".to_string())?;
+    let server_udp_addr = self.server_udp_addr.clone();
+
+    Ok(thread::spawn(move || -> Result<()> {
+      loop {
+        let message = local_addr.to_string();
+
+        udp
+          .send_to(&message.as_bytes(), server_udp_addr)
+          .context(format!("Failed sending to UDP {server_udp_addr:?}"))?;
+
+        thread::sleep(Duration::from_secs(2));
+      }
+    }))
+  }
+}
