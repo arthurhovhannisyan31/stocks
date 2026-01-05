@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use common::{StockQuote, StockRequest, read_tickers};
+use common::{
+  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+};
 use serde_json::json;
 use std::{
-  io::Write,
+  io::{self, Read, Write},
   net::{SocketAddr, TcpStream, UdpSocket},
   path::PathBuf,
   sync::{Arc, RwLock},
@@ -14,6 +16,7 @@ use std::{
 use tracing::{info, warn};
 
 mod configs;
+
 use configs::CliArgs;
 
 fn main() -> Result<()> {
@@ -26,16 +29,21 @@ fn main() -> Result<()> {
 
   let cli = CliArgs::parse();
   let CliArgs {
-    server_tcp_addr,
     client_udp_addr,
-    tickers_file,
+    server_tcp_addr,
     server_udp_port,
+    tickers_file,
   } = cli;
   let tickers = read_tickers(PathBuf::from(tickers_file))?;
   let client =
-    Client::new(server_tcp_addr, server_udp_port, client_udp_addr, tickers)?;
+    Client::new(client_udp_addr, server_tcp_addr, server_udp_port, tickers)?;
 
-  info!(server = %server_tcp_addr, server_udp = %server_udp_port, udp_addr = %client_udp_addr, "Initialized client");
+  info!(
+    server = %server_tcp_addr,
+    server_udp = %server_udp_port,
+    client_udp = %client_udp_addr,
+    "Initialized client"
+  );
 
   client.run()?;
 
@@ -53,14 +61,13 @@ struct Client {
 
 impl Client {
   fn new(
+    client_udp_addr: SocketAddr,
     server_tcp_addr: SocketAddr,
     server_udp_port: u16,
-    client_udp_addr: SocketAddr,
     tickers: Vec<String>,
   ) -> Result<Self> {
     let mut server_udp_addr = server_tcp_addr.clone();
     server_udp_addr.set_port(server_udp_port);
-
     let udp_socket = UdpSocket::bind(client_udp_addr)
       .with_context(|| format!("Failed binding UDP to {}", client_udp_addr))?;
     udp_socket
@@ -78,14 +85,14 @@ impl Client {
   fn run(&self) -> Result<()> {
     info!("Run client");
 
-    let udp_server_thread = self.start_udp_server()?;
-    let healthcheck_thread = self.start_healthcheck_streaming()?;
+    let udp_server = self.start_udp_server()?;
+    let healthcheck = self.start_healthcheck_streaming()?;
     self.send_stream_request()?;
 
-    let _ = healthcheck_thread
+    let _ = healthcheck
       .join()
       .expect("Failed waiting on healthcheck_thread")?;
-    let _ = udp_server_thread
+    let _ = udp_server
       .join()
       .expect("Failed waiting for udp server thread");
 
@@ -112,15 +119,10 @@ impl Client {
             // }
           }
           Err(e)
-            if [
-              std::io::ErrorKind::TimedOut,
-              std::io::ErrorKind::WouldBlock,
-            ]
-            .contains(&e.kind()) =>
+            if [io::ErrorKind::TimedOut, io::ErrorKind::WouldBlock]
+              .contains(&e.kind()) =>
           {
             warn!(err = %e, "Failed reading from UDP: ");
-            // Maybe shutdown since server is not sending
-            // Read time out, skip
           }
           Err(e) => return Err(e).context("udp_socket.recv failed"),
         }
@@ -132,15 +134,25 @@ impl Client {
   fn send_stream_request(&self) -> Result<()> {
     info!("Send stream request");
 
-    let mut tcp_stream = TcpStream::connect(&self.server_tcp_addr).context(
-      format!("Failed connecting to server {}", self.server_tcp_addr),
-    )?;
-    tcp_stream
+    let stream = TcpStream::connect(&self.server_tcp_addr).context(format!(
+      "Failed connecting to server {}",
+      self.server_tcp_addr
+    ))?;
+    stream
       .set_nodelay(true)
-      .context("Failed set_nodelay for TCP listener")?;
-    tcp_stream
+      .context("Failed set_nodelay for TCP stream")?;
+    stream
+      .set_nonblocking(false)
+      .context("Failed set_nonblocking for TCP stream")?;
+    stream
+      .set_read_timeout(Some(Duration::from_secs(20)))
+      .context("Failed set_read_timeout for TCP stream")?;
+    stream
       .set_write_timeout(Some(Duration::from_secs(2)))
-      .context("Failed set_nodelay for TCP listener")?;
+      .context("Failed set_write_timeout for TCP stream")?;
+
+    let reader = stream.try_clone().context("Failed cloning TcpStream")?;
+    let mut writer = stream.try_clone().context("Failed cloning TcpStream")?;
 
     let addr = self
       .udp
@@ -152,10 +164,41 @@ impl Client {
       addr,
       tickers: self.tickers.clone(),
     };
-    let message = json!(stock_request).to_string();
-    tcp_stream
-      .write(message.as_bytes())
+
+    let message = json!(stock_request).to_string() + "\n";
+    writer
+      .write_all(message.as_bytes())
       .context("Failed writing to TCP stream")?;
+    writer.flush()?;
+
+    info!("Request sent");
+
+    let _ = self.read_tcp_stream(reader);
+
+    Ok(())
+  }
+  fn read_tcp_stream(&self, mut stream: TcpStream) -> Result<()> {
+    let peer_addr = stream
+      .peer_addr()
+      .context("Failed reading stream peer address")?;
+    info!(peer = %peer_addr, "Read TCP stream");
+
+    let mut buf = vec![0u8; 1024];
+    let n = stream.read(&mut buf)?;
+    let str = String::from_utf8(Vec::from(&buf[..n]))?;
+
+    let StockResponse { message, status } =
+      serde_json::from_str::<StockResponse>(&str)?;
+
+    info!(message = %message, "Error:");
+    match status {
+      StockResponseStatus::Ok => {
+        info!(message = %message, "Success:");
+      }
+      StockResponseStatus::Error => {
+        // TODO kill the client
+      }
+    }
 
     Ok(())
   }

@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
-use common::{StockQuote, StockRequest, read_tickers};
+use common::{
+  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+};
 use serde_json::json;
 use std::{
   collections::HashMap,
-  io::{self, BufReader, Read},
+  io::{self, Read, Write},
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::mpsc::channel,
@@ -29,7 +31,7 @@ fn main() -> Result<()> {
 
   let tickers =
     read_tickers(PathBuf::from("./modules/quote-server/mocks/tickers.txt"))?;
-  let server: Server = Server::new(SERVER_TCP_ADDR, tickers)?;
+  let server: Server = Server::new(SERVER_TCP_ADDR, SERVER_UPD_ADDR, tickers)?;
 
   info!(addr = %SERVER_TCP_ADDR, "Initialized server");
 
@@ -54,14 +56,18 @@ struct Server {
 }
 
 impl Server {
-  fn new(tcp_addr: SocketAddr, tickers: Vec<String>) -> Result<Self> {
+  fn new(
+    tcp_addr: SocketAddr,
+    udp_addr: SocketAddr,
+    tickers: Vec<String>,
+  ) -> Result<Self> {
     let tcp_listener = TcpListener::bind(tcp_addr).with_context(|| {
       format!("Bind TCP listener to addr: {SERVER_TCP_ADDR}")
     })?;
     tcp_listener
       .set_nonblocking(true)
       .context("Failed set_nonblocking for TCP listener")?;
-    let udp_socket = UdpSocket::bind(SERVER_UPD_ADDR)
+    let udp_socket = UdpSocket::bind(udp_addr)
       .context(format!("Failed binding to UDP socket {SERVER_UPD_ADDR:?}"))?;
     udp_socket
       .set_write_timeout(Some(Duration::from_secs(5)))
@@ -79,12 +85,10 @@ impl Server {
     info!("Run server");
 
     let (tx, rx) = channel::<StockQuoteList>();
-
     let quotes_broadcasting = self.broadcast_quotes_to_channels(rx);
     let healthcheck_server = self.start_healthcheck_server()?;
     let healthcheck_monitoring = self.start_healthcheck_monitoring()?;
     let quotes_generation_thread = self.start_quotes_generation(tx);
-
     self.start_tcp_server()?;
 
     let _ = quotes_generation_thread
@@ -163,13 +167,19 @@ impl Server {
       match stream {
         Ok(stream) => {
           stream
-            .set_nonblocking(true)
+            .set_nodelay(true)
+            .context("Failed set_nodelay for TCP stream")?;
+          stream
+            .set_nonblocking(false) // Keep connection open to send response
             .context("Failed set_nonblocking for TCP stream")?;
           stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .context("Failed set_read_timeout for TCP stream")?;
+          stream
+            .set_write_timeout(Some(Duration::from_secs(20)))
             .context("Failed set_read_timeout for TCP stream")?;
 
-          self.handle_tcp_stream(stream)?;
+          self.read_tcp_stream(stream)?;
         }
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
           thread::sleep(Duration::from_millis(50));
@@ -182,16 +192,23 @@ impl Server {
 
     Ok(())
   }
-  fn handle_tcp_stream(&self, stream: TcpStream) -> Result<()> {
-    let mut stream_reader = BufReader::new(stream);
-    let mut buf = String::new();
-    stream_reader.read_to_string(&mut buf)?;
-    let stock_request = serde_json::from_str::<StockRequest>(&buf)?;
+  fn read_tcp_stream(&self, mut stream: TcpStream) -> Result<()> {
+    info!("Read tcp stream!");
+
+    let mut reader = stream.try_clone().context("Failed cloning TcpStream")?;
+    let mut writer = stream.try_clone().context("Failed cloning TcpStream")?;
+
+    let mut buf = vec![0u8; 1024];
+    let n = reader.read(&mut buf)?;
+    let str = String::from_utf8(Vec::from(&buf[..n]))?;
+
     let StockRequest {
       kind,
       addr,
       tickers,
-    } = stock_request;
+    } = serde_json::from_str::<StockRequest>(&str)?;
+
+    let response: StockResponse;
 
     match kind.as_str() {
       "STREAM" => {
@@ -208,12 +225,27 @@ impl Server {
           .write()
           .expect("Failed locking health_check_map for write");
         healthcheck_map.insert(addr, now.as_secs());
+
+        response = StockResponse {
+          status: StockResponseStatus::Ok,
+          message: "ok".to_string(),
+        };
       }
       _ => {
-        // TODO Sent error message back
         warn!(kind = %kind, "Unsupported command");
+
+        response = StockResponse {
+          status: StockResponseStatus::Error,
+          message: "Unsupported command".to_string(),
+        };
       }
     }
+
+    let message = json!(response).to_string() + "\n";
+    writer
+      .write_all(message.as_bytes())
+      .context("Failed writing to TCP stream")?;
+    writer.flush()?;
 
     Ok(())
   }

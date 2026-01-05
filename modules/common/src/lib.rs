@@ -1,9 +1,11 @@
 use anyhow::Result;
 use serde;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::{
+  fs::File,
+  io::{BufRead, BufReader},
+  net::SocketAddr,
+  path::PathBuf,
+};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StockQuote {
@@ -18,6 +20,18 @@ pub struct StockRequest {
   pub kind: String,
   pub addr: SocketAddr,
   pub tickers: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum StockResponseStatus {
+  Ok,
+  Error,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct StockResponse {
+  pub status: StockResponseStatus,
+  pub message: String,
 }
 
 pub fn read_tickers(path: PathBuf) -> Result<Vec<String>> {

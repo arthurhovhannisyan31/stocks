@@ -1,9 +1,6 @@
 use anyhow::{Result, anyhow};
 use clap::Parser;
-use std::ffi::OsStr;
-use std::net::SocketAddr;
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::{ffi::OsStr, net::SocketAddr, path::PathBuf, str::FromStr};
 
 pub(crate) const EXTENSION_WHITELIST: &[&str] = &["txt"];
 
@@ -12,11 +9,11 @@ pub(crate) const EXTENSION_WHITELIST: &[&str] = &["txt"];
 pub(crate) struct CliArgs {
   #[arg(short = 'f', long, value_name = "Tickers file", value_parser = path_validation)]
   pub tickers_file: PathBuf,
-  #[arg(short = 's', long, value_name = "Server TCP address", value_parser = server_address_validation)]
+  #[arg(short = 's',long, value_name = "Server TCP address", value_parser = server_address_validation)]
   pub server_tcp_addr: SocketAddr,
-  #[arg(short = 'u', long, value_name = "Server UDP port", value_parser = port_validation)]
+  #[arg(short = 'S',long, value_name = "Server UDP port", value_parser = port_validation)]
   pub server_udp_port: u16,
-  #[arg(short = 'c', long, value_name = "Client UDP address", value_parser = server_address_validation)]
+  #[arg(short = 'c',long, value_name = "Client UDP address", value_parser = server_address_validation)]
   pub client_udp_addr: SocketAddr,
 }
 
