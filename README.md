@@ -1,4 +1,4 @@
-<div style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+<div style="display: flex; flex-direction: column; justify-content: center; align-items: center;" align="center">
     <h1><code>stocks</code></h1>
     <h4>Built with <a href="https://rust-lang.org/">🦀</a></h4>
 </div>
