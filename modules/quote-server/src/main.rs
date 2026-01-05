@@ -170,9 +170,6 @@ impl Server {
             .set_nodelay(true)
             .context("Failed set_nodelay for TCP stream")?;
           stream
-            .set_nonblocking(false) // Keep connection open to send response
-            .context("Failed set_nonblocking for TCP stream")?;
-          stream
             .set_read_timeout(Some(Duration::from_secs(20)))
             .context("Failed set_read_timeout for TCP stream")?;
           stream
@@ -192,7 +189,7 @@ impl Server {
 
     Ok(())
   }
-  fn read_tcp_stream(&self, mut stream: TcpStream) -> Result<()> {
+  fn read_tcp_stream(&self, stream: TcpStream) -> Result<()> {
     info!("Read tcp stream!");
 
     let mut reader = stream.try_clone().context("Failed cloning TcpStream")?;
@@ -253,7 +250,7 @@ impl Server {
     &self,
     addr: SocketAddr,
     requested_tickers: Vec<String>,
-  ) -> Result<thread::JoinHandle<Result<()>>> {
+  ) -> Result<()> {
     info!(addr = %addr, "Start quotes streaming");
 
     let udp = self.udp.try_clone().context("Failed cloning UDP socket")?;
@@ -266,7 +263,7 @@ impl Server {
       client_channel_map.insert(addr, tx);
     }
 
-    Ok(thread::spawn(move || -> Result<()> {
+    thread::spawn(move || -> Result<()> {
       while let Ok(quotes) = rx.recv() {
         let quotes = quotes
           .read()
@@ -284,7 +281,9 @@ impl Server {
       }
 
       Ok(())
-    }))
+    });
+
+    Ok(())
   }
   fn start_healthcheck_monitoring(
     &self,
