@@ -9,11 +9,11 @@ use signal_hook::{
   flag,
   low_level::raise,
 };
-use std::sync::atomic::Ordering;
 use std::{
   io::{self, Read, Write},
   net::{SocketAddr, TcpStream, UdpSocket},
   path::PathBuf,
+  sync::atomic::Ordering,
   sync::{Arc, atomic::AtomicBool},
   thread,
   thread::JoinHandle,
@@ -33,7 +33,6 @@ fn main() -> Result<()> {
 
   info!("Start client");
 
-  // Read cli arguments
   let cli = CliArgs::parse();
   let CliArgs {
     client_udp_addr,
@@ -41,9 +40,9 @@ fn main() -> Result<()> {
     server_udp_port,
     tickers_file,
   } = cli;
-  // Read tickers file
+
   let tickers = read_tickers(PathBuf::from(tickers_file))?;
-  // Register shutdown flag
+
   let shutdown = Arc::new(AtomicBool::new(false));
   for sig in TERM_SIGNALS {
     flag::register_conditional_shutdown(*sig, 1, Arc::clone(&shutdown))?;
