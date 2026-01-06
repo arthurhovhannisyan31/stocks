@@ -16,7 +16,7 @@ use tracing::{error, info, warn};
 mod configs;
 mod quote;
 
-use configs::{SERVER_TCP_ADDR, SERVER_UPD_ADDR};
+use configs::{HEALTHCHECK_TIMEOUT, SERVER_TCP_ADDR, SERVER_UPD_ADDR};
 use quote::QuoteGenerator;
 
 fn main() -> Result<()> {
@@ -279,7 +279,7 @@ impl Server {
                   .duration_since(latest_timestamp)
                   .context("Failed reading timestamp difference")?;
 
-                if diff > Duration::from_secs(3) {
+                if diff > Duration::from_secs(HEALTHCHECK_TIMEOUT) {
                   client_channel_map.remove(addr);
                   warn!(addr = %addr, "Client is disconnected:");
                 }

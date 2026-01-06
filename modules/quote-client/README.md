@@ -1,5 +1,5 @@
 <div style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
-    <h1><code>stocks</code></h1>
+    <h1><code>quote client</code></h1>
     <h4>Built with <a href="https://rust-lang.org/">🦀</a></h4>
 </div>
 
