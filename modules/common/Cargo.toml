@@ -1,16 +1,12 @@
 [package]
-name = "quote-server"
+name = "common"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-rand = "0.9"
-tracing.workspace = true
-tracing-subscriber.workspace = true
-common = { path = "../common" }
+serde.workspace = true
 anyhow.workspace = true
-serde_json.workspace = true
 
 #[lints.rust]
 ## rustc (builtin) lints
