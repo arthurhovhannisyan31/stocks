@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use common::{
-  read_tickers, StockQuote, StockRequest, StockResponse, StockResponseStatus,
+  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
 };
 use serde_json::json;
 use signal_hook::{consts::TERM_SIGNALS, flag};
@@ -11,7 +11,7 @@ use std::{
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
   sync::mpsc::channel,
-  sync::{mpsc, Arc, RwLock, TryLockError},
+  sync::{Arc, RwLock, TryLockError, mpsc},
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
 };

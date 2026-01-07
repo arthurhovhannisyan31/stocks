@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
-  read_tickers, StockQuote, StockRequest, StockResponse, StockResponseStatus,
+  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
 };
 use serde_json::json;
 use signal_hook::{
@@ -14,7 +14,7 @@ use std::{
   net::{SocketAddr, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::Ordering,
-  sync::{atomic::AtomicBool, Arc},
+  sync::{Arc, atomic::AtomicBool},
   thread,
   thread::JoinHandle,
 };
@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 
 mod configs;
 
-use configs::{consts, CliArgs};
+use configs::{CliArgs, consts};
 
 fn main() -> Result<()> {
   tracing_subscriber::fmt()
