@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use common::{
-  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+  read_tickers, StockQuote, StockRequest, StockResponse, StockResponseStatus,
 };
 use serde_json::json;
 use signal_hook::{consts::TERM_SIGNALS, flag};
@@ -11,7 +11,7 @@ use std::{
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
   sync::mpsc::channel,
-  sync::{Arc, RwLock, TryLockError, mpsc},
+  sync::{mpsc, Arc, RwLock, TryLockError},
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -31,8 +31,7 @@ fn main() -> Result<()> {
 
   info!("Start server");
 
-  let tickers =
-    read_tickers(PathBuf::from("./modules/quote-server/mocks/tickers.txt"))?;
+  let tickers = read_tickers(PathBuf::from("./mocks/server-tickers.txt"))?;
 
   let shutdown = Arc::new(AtomicBool::new(false));
   for sig in TERM_SIGNALS {
@@ -88,7 +87,7 @@ impl Server {
       consts::SERVER_UPD_ADDR
     ))?;
     udp_socket
-      .set_write_timeout(Some(Duration::from_secs(5)))
+      .set_write_timeout(Some(consts::UDP_WRITE_TIMEOUT))
       .context("Failed set_write_timeout for UDP socket")?;
 
     Ok(Self {
@@ -176,7 +175,7 @@ impl Server {
 
         tx.send(Arc::clone(&quotes_list))
           .with_context(|| "Failed sending list of generated quotes")?;
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(consts::QUOTES_GENERATION_TIMEOUT);
       }
 
       Ok(())
@@ -206,7 +205,7 @@ impl Server {
           self.read_tcp_stream(stream)?;
         }
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-          thread::sleep(Duration::from_millis(50));
+          thread::sleep(consts::TCP_STREAM_IDLE_TIMEOUT);
         }
         Err(e) => {
           error!(error = %e, "Connection failed");
@@ -338,7 +337,7 @@ impl Server {
                   .duration_since(latest_timestamp)
                   .context("Failed reading timestamp difference")?;
 
-                if diff > Duration::from_secs(consts::HEALTHCHECK_TIMEOUT) {
+                if diff > consts::HEALTHCHECK_TIMEOUT {
                   client_channel_map.remove(addr);
                   warn!(addr = %addr, "Client is disconnected:");
                 }
@@ -353,7 +352,7 @@ impl Server {
           }
         }
 
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(consts::HEALTH_CHECK_MONITOR_TIMEOUT);
       }
 
       Ok(())
