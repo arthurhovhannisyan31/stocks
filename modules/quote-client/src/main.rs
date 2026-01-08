@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     tickers_file,
   } = cli;
 
-  let tickers = read_tickers(PathBuf::from(tickers_file))?;
+  let tickers: Vec<String> = read_tickers(PathBuf::from(tickers_file))?;
 
   let shutdown = Arc::new(AtomicBool::new(false));
   for sig in TERM_SIGNALS {
@@ -183,7 +183,7 @@ impl Client {
       tickers: self.tickers.clone(),
     };
 
-    let message = json!(stock_request).to_string() + "\n";
+    let message = json!(stock_request).to_string();
     writer
       .write_all(message.as_bytes())
       .context("Failed writing to TCP stream")?;
@@ -203,10 +203,9 @@ impl Client {
 
     let mut buf = vec![0u8; 1024];
     let n = stream.read(&mut buf)?;
-    let str = String::from_utf8(Vec::from(&buf[..n]))?;
 
     let StockResponse { message, status } =
-      serde_json::from_str::<StockResponse>(&str)?;
+      serde_json::from_slice::<StockResponse>(&buf[..n])?;
 
     match status {
       StockResponseStatus::Ok => {

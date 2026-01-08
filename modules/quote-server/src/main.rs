@@ -31,7 +31,8 @@ fn main() -> Result<()> {
 
   info!("Start server");
 
-  let tickers = read_tickers(PathBuf::from("./mocks/server-tickers.txt"))?;
+  let tickers: Vec<String> =
+    read_tickers(PathBuf::from("./mocks/server-tickers.txt"))?;
 
   let shutdown = Arc::new(AtomicBool::new(false));
   for sig in TERM_SIGNALS {
@@ -223,13 +224,12 @@ impl Server {
 
     let mut buf = vec![0u8; 1024];
     let n = reader.read(&mut buf)?;
-    let str = String::from_utf8(Vec::from(&buf[..n]))?;
 
     let StockRequest {
       kind,
       addr,
       tickers,
-    } = serde_json::from_str::<StockRequest>(&str)?;
+    } = serde_json::from_slice::<StockRequest>(&buf[..n])?;
 
     let response: StockResponse;
 
@@ -264,7 +264,7 @@ impl Server {
       }
     }
 
-    let message = json!(response).to_string() + "\n";
+    let message = json!(response).to_string();
     writer
       .write_all(message.as_bytes())
       .context("Failed writing to TCP stream")?;
