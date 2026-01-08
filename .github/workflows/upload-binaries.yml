@@ -23,21 +23,21 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
-#      - name: Setup Cargo
-#        uses: ./.github/actions/setup-cargo
-#      - name: Validate tests
-#        run: |
-#          cargo test
-#      - name: Build target
-#        run: |
-#          cargo build --release
-#      - name: Archive to preserve executable permissions
-#        run: |
-#          tar -cvf comparer-${{ matrix.label }}.tar ./target/release/comparer${{ matrix.extension }}
-#          tar -cvf converter-${{ matrix.label }}.tar ./target/release/converter${{ matrix.extension }}
-#      - name: Upload artifacts to release
-#        env:
-#          GH_TOKEN: ${{ github.token }}
-#        run: |
-#          gh release upload ${{github.event.release.tag_name}} comparer-${{ matrix.label }}.tar
-#          gh release upload ${{github.event.release.tag_name}} converter-${{ matrix.label }}.tar
+      - name: Setup Cargo
+        uses: ./.github/actions/setup-cargo
+      - name: Validate tests
+        run: |
+          cargo test
+      - name: Build target
+        run: |
+          cargo build --release
+      - name: Archive to preserve executable permissions
+        run: |
+          tar -cvf quote-server-${{ matrix.label }}.tar ./target/release/quote-server${{ matrix.extension }}
+          tar -cvf quote-client-${{ matrix.label }}.tar ./target/release/quote-client${{ matrix.extension }}
+      - name: Upload artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{github.event.release.tag_name}} quote-server-${{ matrix.label }}.tar
+          gh release upload ${{github.event.release.tag_name}} quote-client-${{ matrix.label }}.tar
