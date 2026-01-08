@@ -2,13 +2,10 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
   StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+  register_signal_hooks,
 };
 use serde_json::json;
-use signal_hook::{
-  consts::{SIGTERM, TERM_SIGNALS},
-  flag,
-  low_level::raise,
-};
+use signal_hook::{consts::SIGTERM, low_level::raise};
 use std::{
   io::{self, Read, Write},
   net::{SocketAddr, TcpStream, UdpSocket},
@@ -43,10 +40,7 @@ fn main() -> Result<()> {
   let tickers: Vec<String> = read_tickers(PathBuf::from(tickers_file))?;
 
   let shutdown = Arc::new(AtomicBool::new(false));
-  for sig in TERM_SIGNALS {
-    flag::register_conditional_shutdown(*sig, 1, Arc::clone(&shutdown))?;
-    flag::register(*sig, Arc::clone(&shutdown))?;
-  }
+  register_signal_hooks(&shutdown)?;
 
   let client = Client::new(
     client_udp_addr,

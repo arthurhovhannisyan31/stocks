@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use common::{
   StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+  register_signal_hooks,
 };
 use serde_json::json;
-use signal_hook::{consts::TERM_SIGNALS, flag};
 use std::{
   collections::HashMap,
   io::{self, Read, Write},
@@ -35,10 +35,7 @@ fn main() -> Result<()> {
     read_tickers(PathBuf::from("./mocks/server-tickers.txt"))?;
 
   let shutdown = Arc::new(AtomicBool::new(false));
-  for sig in TERM_SIGNALS {
-    flag::register_conditional_shutdown(*sig, 1, Arc::clone(&shutdown))?;
-    flag::register(*sig, Arc::clone(&shutdown))?;
-  }
+  register_signal_hooks(&shutdown)?;
 
   let server: Server = Server::new(
     consts::SERVER_TCP_ADDR,
@@ -175,7 +172,7 @@ impl Server {
         }
 
         tx.send(Arc::clone(&quotes_list))
-          .with_context(|| "Failed sending list of generated quotes")?;
+          .context("Failed sending list of generated quotes")?;
         thread::sleep(consts::QUOTES_GENERATION_TIMEOUT);
       }
 
@@ -229,7 +226,8 @@ impl Server {
       kind,
       addr,
       tickers,
-    } = serde_json::from_slice::<StockRequest>(&buf[..n])?;
+    } = serde_json::from_slice::<StockRequest>(&buf[..n])
+      .context("Failed deserializing StockRequest")?;
 
     let response: StockResponse;
 
@@ -268,7 +266,7 @@ impl Server {
     writer
       .write_all(message.as_bytes())
       .context("Failed writing to TCP stream")?;
-    writer.flush()?;
+    writer.flush().context("Failed writing data to stream")?;
 
     Ok(())
   }

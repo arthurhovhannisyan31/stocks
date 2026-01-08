@@ -8,6 +8,8 @@ license = "MIT OR Apache-2.0"
 serde.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
+signal-hook.workspace = true
 
 #[lints.rust]
 ## rustc (builtin) lints

@@ -1,7 +1,10 @@
 //! This is a common crate, which contains structures, types and functions used in workspace crates.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde;
+use signal_hook::{consts::TERM_SIGNALS, flag};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::{
   fs::File,
   io::{BufRead, BufReader},
@@ -98,7 +101,7 @@ pub struct StockResponse {
 /// }
 /// ```
 pub fn read_tickers(path: PathBuf) -> Result<Vec<String>> {
-  let tickers_file = File::open(path)?;
+  let tickers_file = File::open(path).context("Failed reading tickers file")?;
   let reader = BufReader::new(tickers_file);
   let lines = reader.lines();
   let tickers: Vec<String> = lines
@@ -107,4 +110,17 @@ pub fn read_tickers(path: PathBuf) -> Result<Vec<String>> {
     .collect();
 
   Ok(tickers)
+}
+
+pub fn register_signal_hooks(shutdown: &Arc<AtomicBool>) -> Result<()> {
+  for sig in TERM_SIGNALS {
+    flag::register_conditional_shutdown(*sig, 1, Arc::clone(&shutdown))
+      .context(format!(
+        "Failed registering conditional_shutdown for signal {sig:?}"
+      ))?;
+    flag::register(*sig, Arc::clone(&shutdown))
+      .context(format!("Failed registering signal {sig:?}"))?;
+  }
+
+  Ok(())
 }
