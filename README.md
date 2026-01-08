@@ -23,11 +23,11 @@ Server health check mechanism excludes inactive clients from data streming and c
 Please build the target and run server and clients using terminal.
 
 ```shell
-  quote-server
+quote-server
 ```
 
 ```shell
-  quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
+quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
 ```
 
 ## Stack

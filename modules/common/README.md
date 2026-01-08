@@ -9,26 +9,25 @@
 
 ## Overview
 
-...
-
-## Description
-
-...
-
-### Server
-
-...
-
-### Client
-
-...
+This is a common crate, which contains structures, types and functions used in workspace crates.
 
 ## Usage
+
+Add the crate in your `Cargo.toml`
+
+```toml
+common = { path = "../common" }
+```
+
+Add module declaration in your crate `main.rs|lib.rs`.
+
+```rust
+use common::*;
+```
 
 ...
 
 ## Stack
 
 - [Rust](https://rust-lang.org/)
-- [Tracing](https://crates.io/crates/tracing)
 - [Serde](https://crates.io/crates/serde)

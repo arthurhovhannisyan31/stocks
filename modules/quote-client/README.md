@@ -33,7 +33,7 @@ to [TERM_SIGNALS](https://docs.rs/signal-hook/latest/src/signal_hook/lib.rs.html
 ## Usage
 
 ```shell
-  ./target/release/quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
+./target/release/quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
 ```
 
 ## Stack
