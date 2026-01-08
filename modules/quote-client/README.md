@@ -19,6 +19,7 @@ The file should have `txt` extension and tickers should be separated with a new 
 - `-S --server_udp_port <u16>` Server UDP address port
 - `-c --client_udp_addr <SocketAddr>` Client UDP address
 
+
 - `--help`  Print help
 - `-V, --version`  Print version
 
@@ -40,3 +41,6 @@ to [TERM_SIGNALS](https://docs.rs/signal-hook/latest/src/signal_hook/lib.rs.html
 - [Rust](https://rust-lang.org/)
 - [Tracing](https://crates.io/crates/tracing)
 - [Serde](https://crates.io/crates/serde)
+- [Clap](https://crates.io/crates/clap)
+- [Tracing](https://crates.io/crates/tracing)
+- [Signal hook](https://crates.io/crates/signal_hook)

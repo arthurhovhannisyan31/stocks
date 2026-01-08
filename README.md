@@ -9,34 +9,26 @@
 
 ## Overview
 
-This is a simple data streaming application. Server provides filtered stock quotes data and client receives data through
-UDP socket.
-Why
-What
+This is a simple data streaming client-server application.
+[Client](./modules/quote-client/README.md) sends `TCP Request` and accepts streamed data on `UDP Socket`.
+[Server](./modules/quote-server/README.md) generates random stock quotes data and streams filtered data to client.
+Server health check mechanism excludes inactive clients from data streming and client sends ping messages to server.
 
 ## Description
 
-How
-
-Tech stack.
-TCP
-UDP
-used stack
-...
-
-### Server
-
-...
-
-### Client
-
-...
+![img.png](./static/images/client-server-diagram.png)
 
 ## Usage
 
 Please build the target and run server and clients using terminal.
 
-...
+```shell
+  quote-server
+```
+
+```shell
+  quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
+```
 
 ## Stack
 

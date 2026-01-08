@@ -15,13 +15,13 @@ Each client request gets its own dedicated server thread which sends filtered qu
 Generated data is distributed to each client thread on interval.
 Server has `graceful shutdown` feature which listens
 to [TERM_SIGNALS](https://docs.rs/signal-hook/latest/src/signal_hook/lib.rs.html#406) system signals.
-In order to prevent resources misuse a `health-check` mechanism is used to check client activity status.
+Inactive clients are disconnected from data streaming using periodically sent `health-check` messages.
 
 ## Description
 
 Server utilizes `TCP listener` for clients requests and sends back response using same `TCP stream`.
-Quotes data is sent back using `UDP socket`.
-Both `TCP` and `UDP` connections utilize `JSON` data formatting which is sent as `utf-8` byte sequence.
+Stock quotes data is sent back using `UDP socket`.
+Both `TCP` and `UDP` connections utilize `JSON` formatting, the data is sent as `utf-8` byte sequence.
 Health check server accepts client messages through `UDP socket` and excludes inactive clients when health check message
 is not sent on time.  
 Server handles `TCP` requests with list of requested stock quotes and starts data streaming through `UDP` channel.
@@ -36,3 +36,5 @@ requires the file be located at `.mocks/server-tickers.txt`.
 - [Rust](https://rust-lang.org/)
 - [Tracing](https://crates.io/crates/tracing)
 - [Serde](https://crates.io/crates/serde)
+- [Signal hook](https://crates.io/crates/signal_hook)
+- [Tracing](https://crates.io/crates/tracing)
