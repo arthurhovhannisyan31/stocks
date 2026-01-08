@@ -2,28 +2,24 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
   StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+  register_signal_hooks,
 };
 use serde_json::json;
-use signal_hook::{
-  consts::{SIGTERM, TERM_SIGNALS},
-  flag,
-  low_level::raise,
-};
-use std::sync::atomic::Ordering;
+use signal_hook::{consts::SIGTERM, low_level::raise};
 use std::{
   io::{self, Read, Write},
   net::{SocketAddr, TcpStream, UdpSocket},
   path::PathBuf,
+  sync::atomic::Ordering,
   sync::{Arc, atomic::AtomicBool},
   thread,
   thread::JoinHandle,
-  time::Duration,
 };
 use tracing::{error, info, warn};
 
 mod configs;
 
-use configs::CliArgs;
+use configs::{CliArgs, consts};
 
 fn main() -> Result<()> {
   tracing_subscriber::fmt()
@@ -33,7 +29,6 @@ fn main() -> Result<()> {
 
   info!("Start client");
 
-  // Read cli arguments
   let cli = CliArgs::parse();
   let CliArgs {
     client_udp_addr,
@@ -41,14 +36,11 @@ fn main() -> Result<()> {
     server_udp_port,
     tickers_file,
   } = cli;
-  // Read tickers file
-  let tickers = read_tickers(PathBuf::from(tickers_file))?;
-  // Register shutdown flag
+
+  let tickers: Vec<String> = read_tickers(PathBuf::from(tickers_file))?;
+
   let shutdown = Arc::new(AtomicBool::new(false));
-  for sig in TERM_SIGNALS {
-    flag::register_conditional_shutdown(*sig, 1, Arc::clone(&shutdown))?;
-    flag::register(*sig, Arc::clone(&shutdown))?;
-  }
+  register_signal_hooks(&shutdown)?;
 
   let client = Client::new(
     client_udp_addr,
@@ -92,7 +84,7 @@ impl Client {
     let udp_socket = UdpSocket::bind(client_udp_addr)
       .with_context(|| format!("Failed binding UDP to {}", client_udp_addr))?;
     udp_socket
-      .set_read_timeout(Some(Duration::from_secs(2)))
+      .set_read_timeout(Some(consts::UDP_READ_TIMEOUT))
       .with_context(|| "Failed set_read_timeout for UPD socket".to_string())?;
 
     Ok(Self {
@@ -134,10 +126,10 @@ impl Client {
             let stock_quotes: Vec<StockQuote> =
               serde_json::from_slice::<Vec<StockQuote>>(&buf[..n])
                 .context("Failed parsing string to json")?;
-            info!("Gor store quotes: {}", stock_quotes.len());
-            // for stock_quote in stock_quotes {
-            //   info!("Stock data: {stock_quote:?}");
-            // }
+
+            for stock_quote in stock_quotes {
+              info!("Stock data: {stock_quote:?}");
+            }
           }
           Err(e)
             if [io::ErrorKind::TimedOut, io::ErrorKind::WouldBlock]
@@ -165,10 +157,10 @@ impl Client {
       .set_nodelay(true)
       .context("Failed set_nodelay for TCP stream")?;
     stream
-      .set_read_timeout(Some(Duration::from_secs(20)))
+      .set_read_timeout(Some(consts::TCP_STREAM_READ_TIMEOUT))
       .context("Failed set_read_timeout for TCP stream")?;
     stream
-      .set_write_timeout(Some(Duration::from_secs(2)))
+      .set_write_timeout(Some(consts::TCP_STREAM_WRITE_TIMEOUT))
       .context("Failed set_write_timeout for TCP stream")?;
 
     let reader = stream.try_clone().context("Failed cloning TcpStream")?;
@@ -185,7 +177,7 @@ impl Client {
       tickers: self.tickers.clone(),
     };
 
-    let message = json!(stock_request).to_string() + "\n";
+    let message = json!(stock_request).to_string();
     writer
       .write_all(message.as_bytes())
       .context("Failed writing to TCP stream")?;
@@ -205,10 +197,9 @@ impl Client {
 
     let mut buf = vec![0u8; 1024];
     let n = stream.read(&mut buf)?;
-    let str = String::from_utf8(Vec::from(&buf[..n]))?;
 
     let StockResponse { message, status } =
-      serde_json::from_str::<StockResponse>(&str)?;
+      serde_json::from_slice::<StockResponse>(&buf[..n])?;
 
     match status {
       StockResponseStatus::Ok => {
@@ -231,7 +222,7 @@ impl Client {
       .context("Failed reading local address")?;
     let udp = self.udp.try_clone().context("Failed cloning udp socket")?;
     udp
-      .set_write_timeout(Some(Duration::from_secs(2)))
+      .set_write_timeout(Some(consts::UDP_WRITE_TIMEOUT))
       .with_context(|| "Failed set_write_timeout for UPD socket".to_string())?;
     let server_udp_addr = self.server_udp_addr.clone();
     let shutdown = Arc::clone(&self.shutdown);
@@ -244,7 +235,7 @@ impl Client {
           .send_to(&message.as_bytes(), server_udp_addr)
           .context(format!("Failed sending to UDP {server_udp_addr:?}"))?;
 
-        thread::sleep(Duration::from_secs(2));
+        thread::sleep(consts::HEALTH_CHECK_STREAMING_TIMEOUT);
       }
 
       info!("Stop healthcheck streaming");

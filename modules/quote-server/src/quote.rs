@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use common::StockQuote;
 use rand::Rng;
 
+use crate::configs::consts;
+
 pub struct QuoteGenerator {
   price_map: HashMap<String, f64>,
 }
@@ -15,7 +17,10 @@ impl QuoteGenerator {
     }
   }
   pub fn generate_quote(&self, ticker: &str) -> StockQuote {
-    let last_price = self.price_map.get(ticker).unwrap_or(&1.0);
+    let last_price = self
+      .price_map
+      .get(ticker)
+      .unwrap_or(&consts::QUOTE_DEFAULT_PRICE);
 
     let volume = match ticker {
       "AAPL" | "GOOGL" | "MSFT" | "TSLA" | "NVDA" => {

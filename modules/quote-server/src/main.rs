@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use common::{
   StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
+  register_signal_hooks,
 };
 use serde_json::json;
 use std::{
@@ -8,6 +9,7 @@ use std::{
   io::{self, Read, Write},
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
+  sync::atomic::{AtomicBool, Ordering},
   sync::mpsc::channel,
   sync::{Arc, RwLock, TryLockError, mpsc},
   thread,
@@ -18,7 +20,7 @@ use tracing::{error, info, warn};
 mod configs;
 mod quote;
 
-use configs::{HEALTHCHECK_TIMEOUT, SERVER_TCP_ADDR, SERVER_UPD_ADDR};
+use configs::consts;
 use quote::QuoteGenerator;
 
 fn main() -> Result<()> {
@@ -29,11 +31,20 @@ fn main() -> Result<()> {
 
   info!("Start server");
 
-  let tickers =
-    read_tickers(PathBuf::from("./modules/quote-server/mocks/tickers.txt"))?;
-  let server: Server = Server::new(SERVER_TCP_ADDR, SERVER_UPD_ADDR, tickers)?;
+  let tickers: Vec<String> =
+    read_tickers(PathBuf::from("./mocks/server-tickers.txt"))?;
 
-  info!(addr = %SERVER_TCP_ADDR, "Initialized server");
+  let shutdown = Arc::new(AtomicBool::new(false));
+  register_signal_hooks(&shutdown)?;
+
+  let server: Server = Server::new(
+    consts::SERVER_TCP_ADDR,
+    consts::SERVER_UPD_ADDR,
+    tickers,
+    shutdown,
+  )?;
+
+  info!(addr = %consts::SERVER_TCP_ADDR, "Initialized server");
 
   server.run()?;
 
@@ -53,6 +64,7 @@ struct Server {
   tickers: Vec<String>,
   client_channel_map: ClientChannelsMap,
   health_check_map: HealthCheckMap,
+  shutdown: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -60,17 +72,20 @@ impl Server {
     tcp_addr: SocketAddr,
     udp_addr: SocketAddr,
     tickers: Vec<String>,
+    shutdown: Arc<AtomicBool>,
   ) -> Result<Self> {
     let tcp_listener = TcpListener::bind(tcp_addr).with_context(|| {
-      format!("Bind TCP listener to addr: {SERVER_TCP_ADDR}")
+      format!("Bind TCP listener to addr: {}", consts::SERVER_TCP_ADDR)
     })?;
     tcp_listener
       .set_nonblocking(true)
       .context("Failed set_nonblocking for TCP listener")?;
-    let udp_socket = UdpSocket::bind(udp_addr)
-      .context(format!("Failed binding to UDP socket {SERVER_UPD_ADDR:?}"))?;
+    let udp_socket = UdpSocket::bind(udp_addr).context(format!(
+      "Failed binding to UDP socket {:?}",
+      consts::SERVER_UPD_ADDR
+    ))?;
     udp_socket
-      .set_write_timeout(Some(Duration::from_secs(5)))
+      .set_write_timeout(Some(consts::UDP_WRITE_TIMEOUT))
       .context("Failed set_write_timeout for UDP socket")?;
 
     Ok(Self {
@@ -79,6 +94,7 @@ impl Server {
       tickers,
       client_channel_map: Arc::new(RwLock::new(HashMap::new())),
       health_check_map: Arc::new(RwLock::new(HashMap::new())),
+      shutdown,
     })
   }
   fn run(&self) -> Result<()> {
@@ -143,9 +159,10 @@ impl Server {
     let mut quote_generator = QuoteGenerator::new(&self.tickers);
     // Share Arc<RwLock> reference to avoid data cloning on message dispatch
     let quotes_list: StockQuoteList = Arc::new(RwLock::new(vec![]));
+    let shutdown = Arc::clone(&self.shutdown);
 
     thread::spawn(move || -> Result<()> {
-      loop {
+      while !shutdown.load(Ordering::Acquire) {
         quote_generator.shuffle_prices();
         let new_quotes_list = quote_generator.generate_quote_list();
         {
@@ -155,31 +172,38 @@ impl Server {
         }
 
         tx.send(Arc::clone(&quotes_list))
-          .with_context(|| "Failed sending list of generated quotes")?;
-        thread::sleep(Duration::from_millis(1000));
+          .context("Failed sending list of generated quotes")?;
+        thread::sleep(consts::QUOTES_GENERATION_TIMEOUT);
       }
+
+      Ok(())
     })
   }
   fn start_tcp_server(&self) -> Result<()> {
     info!("Start TCP server");
+    let shutdown = Arc::clone(&self.shutdown);
 
     for stream in self.tcp.incoming() {
+      if shutdown.load(Ordering::Acquire) {
+        return Ok(());
+      }
+
       match stream {
         Ok(stream) => {
           stream
             .set_nodelay(true)
             .context("Failed set_nodelay for TCP stream")?;
           stream
-            .set_read_timeout(Some(Duration::from_secs(20)))
+            .set_read_timeout(Some(Duration::from_secs(2)))
             .context("Failed set_read_timeout for TCP stream")?;
           stream
-            .set_write_timeout(Some(Duration::from_secs(20)))
+            .set_write_timeout(Some(Duration::from_secs(2)))
             .context("Failed set_read_timeout for TCP stream")?;
 
           self.read_tcp_stream(stream)?;
         }
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-          thread::sleep(Duration::from_millis(50));
+          thread::sleep(consts::TCP_STREAM_IDLE_TIMEOUT);
         }
         Err(e) => {
           error!(error = %e, "Connection failed");
@@ -197,13 +221,13 @@ impl Server {
 
     let mut buf = vec![0u8; 1024];
     let n = reader.read(&mut buf)?;
-    let str = String::from_utf8(Vec::from(&buf[..n]))?;
 
     let StockRequest {
       kind,
       addr,
       tickers,
-    } = serde_json::from_str::<StockRequest>(&str)?;
+    } = serde_json::from_slice::<StockRequest>(&buf[..n])
+      .context("Failed deserializing StockRequest")?;
 
     let response: StockResponse;
 
@@ -238,11 +262,11 @@ impl Server {
       }
     }
 
-    let message = json!(response).to_string() + "\n";
+    let message = json!(response).to_string();
     writer
       .write_all(message.as_bytes())
       .context("Failed writing to TCP stream")?;
-    writer.flush()?;
+    writer.flush().context("Failed writing data to stream")?;
 
     Ok(())
   }
@@ -290,9 +314,10 @@ impl Server {
   ) -> Result<thread::JoinHandle<Result<()>>> {
     let health_check_map = Arc::clone(&self.health_check_map);
     let client_channel_map = Arc::clone(&self.client_channel_map);
+    let shutdown = Arc::clone(&self.shutdown);
 
     Ok(thread::spawn(move || {
-      loop {
+      while !shutdown.load(Ordering::Acquire) {
         // Avoid deadlock using try_read
         // Read access has lower priority than write hence can be skipped
         match health_check_map.try_read() {
@@ -310,7 +335,7 @@ impl Server {
                   .duration_since(latest_timestamp)
                   .context("Failed reading timestamp difference")?;
 
-                if diff > Duration::from_secs(HEALTHCHECK_TIMEOUT) {
+                if diff > consts::HEALTHCHECK_TIMEOUT {
                   client_channel_map.remove(addr);
                   warn!(addr = %addr, "Client is disconnected:");
                 }
@@ -325,8 +350,10 @@ impl Server {
           }
         }
 
-        thread::sleep(Duration::from_millis(50));
+        thread::sleep(consts::HEALTH_CHECK_MONITOR_TIMEOUT);
       }
+
+      Ok(())
     }))
   }
   fn start_healthcheck_server(&self) -> Result<thread::JoinHandle<Result<()>>> {
@@ -336,14 +363,12 @@ impl Server {
       .context("Failed set_read_timeout for udp socket")?;
     let mut buf = vec![0u8; 64];
     let health_check_map = Arc::clone(&self.health_check_map);
+    let shutdown = Arc::clone(&self.shutdown);
 
     Ok(thread::spawn(move || {
-      loop {
+      while !shutdown.load(Ordering::Acquire) {
         match udp.recv_from(&mut buf) {
-          Ok((n, from)) => {
-            let vec = Vec::from(&buf[..n]);
-            let msg = String::from_utf8(vec)?;
-
+          Ok((_, from)) => {
             // update client activity timestamp
             let mut health_check_map = health_check_map
               .write()
@@ -364,6 +389,8 @@ impl Server {
           Err(e) => return Err(e).context("Failed reading from UDP socket"),
         }
       }
+
+      Ok(())
     }))
   }
 }

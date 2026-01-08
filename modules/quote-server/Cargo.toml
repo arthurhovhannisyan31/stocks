@@ -1,6 +1,6 @@
 [package]
 name = "quote-server"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
@@ -11,6 +11,7 @@ tracing-subscriber.workspace = true
 common = { path = "../common" }
 anyhow.workspace = true
 serde_json.workspace = true
+signal-hook.workspace = true
 
 #[lints.rust]
 ## rustc (builtin) lints

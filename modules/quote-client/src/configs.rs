@@ -45,3 +45,14 @@ fn port_validation(str: &str) -> Result<u16> {
 
   Ok(port)
 }
+
+pub(crate) mod consts {
+  use std::time::Duration;
+
+  pub const UDP_READ_TIMEOUT: Duration = Duration::from_secs(5);
+  pub const UDP_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+  pub const TCP_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(2);
+  pub const TCP_STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+  pub const HEALTH_CHECK_STREAMING_TIMEOUT: Duration =
+    Duration::from_millis(50);
+}
