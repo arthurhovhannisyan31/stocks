@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use common::{
-  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
-  register_signal_hooks,
+  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
+  utils::{read_tickers, register_signal_hooks},
 };
 use serde_json::json;
 use std::{
@@ -74,9 +74,10 @@ impl Server {
     tickers: Vec<String>,
     shutdown: Arc<AtomicBool>,
   ) -> Result<Self> {
-    let tcp_listener = TcpListener::bind(tcp_addr).with_context(|| {
-      format!("Bind TCP listener to addr: {}", consts::SERVER_TCP_ADDR)
-    })?;
+    let tcp_listener = TcpListener::bind(tcp_addr).context(format!(
+      "Failed to bind TCP listener to addr: {}",
+      consts::SERVER_TCP_ADDR
+    ))?;
     tcp_listener
       .set_nonblocking(true)
       .context("Failed set_nonblocking for TCP listener")?;

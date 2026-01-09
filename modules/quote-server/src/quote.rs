@@ -1,7 +1,9 @@
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+  collections::HashMap,
+  time::{SystemTime, UNIX_EPOCH},
+};
 
-use common::StockQuote;
+use common::stock::StockQuote;
 use rand::Rng;
 
 use crate::configs::consts;

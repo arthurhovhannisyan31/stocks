@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
-  StockQuote, StockRequest, StockResponse, StockResponseStatus, read_tickers,
-  register_signal_hooks,
+  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
+  utils::{read_tickers, register_signal_hooks},
 };
 use serde_json::json;
 use signal_hook::{consts::SIGTERM, low_level::raise};
@@ -82,10 +82,10 @@ impl Client {
     let mut server_udp_addr = server_tcp_addr.clone();
     server_udp_addr.set_port(server_udp_port);
     let udp_socket = UdpSocket::bind(client_udp_addr)
-      .with_context(|| format!("Failed binding UDP to {}", client_udp_addr))?;
+      .context(format!("Failed binding UDP to {}", client_udp_addr))?;
     udp_socket
       .set_read_timeout(Some(consts::UDP_READ_TIMEOUT))
-      .with_context(|| "Failed set_read_timeout for UPD socket".to_string())?;
+      .context("Failed set_read_timeout for UPD socket")?;
 
     Ok(Self {
       tickers,
@@ -223,7 +223,7 @@ impl Client {
     let udp = self.udp.try_clone().context("Failed cloning udp socket")?;
     udp
       .set_write_timeout(Some(consts::UDP_WRITE_TIMEOUT))
-      .with_context(|| "Failed set_write_timeout for UPD socket".to_string())?;
+      .context("Failed set_write_timeout for UPD socket")?;
     let server_udp_addr = self.server_udp_addr.clone();
     let shutdown = Arc::clone(&self.shutdown);
 
