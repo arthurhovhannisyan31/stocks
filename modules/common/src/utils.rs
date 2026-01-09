@@ -1,4 +1,4 @@
-use anyhow::Context;
+use crate::error::AppError;
 use signal_hook::{consts::TERM_SIGNALS, flag};
 use std::{
   fs::File,
@@ -13,18 +13,17 @@ use std::{
 /// # Example
 ///
 /// ```
-/// use common::{ utils::{read_tickers} };
-/// use anyhow::{Result};
+/// use common::{ utils::{read_tickers}, error::AppError };
 /// use std::{path::PathBuf};
 ///
-/// fn main() -> Result<()>{
+/// fn main() -> Result<(), AppError>{
 ///   let tickers: Vec<String> = read_tickers(PathBuf::from("../../mocks/server-tickers.txt"))?;
 ///
 ///   Ok(())
 /// }
 /// ```
-pub fn read_tickers(path: PathBuf) -> anyhow::Result<Vec<String>> {
-  let tickers_file = File::open(path).context("Failed reading tickers file")?;
+pub fn read_tickers(path: PathBuf) -> Result<Vec<String>, AppError> {
+  let tickers_file = File::open(path)?;
   let reader = BufReader::new(tickers_file);
   let lines = reader.lines();
   let tickers: Vec<String> = lines
@@ -35,17 +34,14 @@ pub fn read_tickers(path: PathBuf) -> anyhow::Result<Vec<String>> {
   Ok(tickers)
 }
 
-// "Failed registering conditional_shutdown for signal {sig:?}"
-// format!("Failed registering signal {sig:?}"))?;
-
-pub fn register_signal_hooks(shutdown: &Arc<AtomicBool>) -> anyhow::Result<()> {
+pub fn register_signal_hooks(
+  shutdown: &Arc<AtomicBool>,
+) -> Result<(), AppError> {
   for sig in TERM_SIGNALS {
     flag::register_conditional_shutdown(*sig, 1, Arc::clone(&shutdown))
-      .context(format!(
-        "Failed registering conditional_shutdown for signal {sig:?}"
-      ))?;
+      .map_err(|err| AppError::SignalError { err, signal: *sig })?;
     flag::register(*sig, Arc::clone(&shutdown))
-      .context(format!("Failed registering signal {sig:?}"))?;
+      .map_err(|err| AppError::SignalError { err, signal: *sig })?;
   }
 
   Ok(())
