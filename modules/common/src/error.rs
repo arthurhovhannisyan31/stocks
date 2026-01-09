@@ -1,7 +1,4 @@
-use std::ffi::c_int;
-use std::io;
-use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::{ffi::c_int, io, net::SocketAddr, path::PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -23,12 +20,12 @@ pub enum AppError {
   AddressBindError { addr: SocketAddr, err: io::Error },
   #[error("Failed configuring TcpListener")]
   TcpListenerError { err: io::Error },
-  #[error("Failed cloning TcpStream")]
-  TcpStreamCloneError { err: io::Error },
+  #[error("Failed configuring TcpStream")]
+  TcpStreamError { err: io::Error },
   #[error("Failed configuring UdpSocket")]
   UdpSocketError { err: io::Error },
-  #[error("Failed cloning UdpSocket")]
-  UdpSocketCloneError { err: io::Error },
+  #[error("Deserialization error")]
+  DeserializationError { err: serde_json::error::Error },
   #[error(transparent)]
   OtherError(#[from] anyhow::Error),
 }
