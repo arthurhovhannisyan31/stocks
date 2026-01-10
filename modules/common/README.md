@@ -9,7 +9,7 @@
 
 ## Overview
 
-This is a common crate, which contains structures, types and functions used in workspace crates.
+This is a common crate, which contains structures, types, errors and functions used in workspace crates.
 
 ## Usage
 
@@ -24,8 +24,6 @@ Add module declaration in your crate `main.rs|lib.rs`.
 ```rust
 use common::*;
 ```
-
-...
 
 ## Stack
 

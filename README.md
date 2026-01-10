@@ -10,9 +10,12 @@
 ## Overview
 
 This is a simple data streaming client-server application.
+
+[Server](./modules/quote-server/README.md) generates random stock quotes data and streams filtered data to client and
+the
 [Client](./modules/quote-client/README.md) sends `TCP Request` and accepts streamed data on `UDP Socket`.
-[Server](./modules/quote-server/README.md) generates random stock quotes data and streams filtered data to client.
 Server health check mechanism excludes inactive clients from data streming and client sends ping messages to server.
+The [Common](./modules/common/README.md) crate contains all the reused modules in workspace.
 
 ## Description
 
@@ -20,21 +23,26 @@ Server health check mechanism excludes inactive clients from data streming and c
 
 ## Usage
 
-Please build the target and run server and clients using terminal.
+Please find the latest build binaries in
+the [GH Releases](https://github.com/arthurhovhannisyan31/stocks/releases).
+Download the archived binaries for your OS and use the `quote-server` and `quote-client` files from the `target/release`
+folder.
 
 ```shell
-quote-server
+quote-server -f server-tickers.txt
 ```
 
 ```shell
-quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
+quote-client -f client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
 ```
 
 ## Stack
 
 - [Rust](https://rust-lang.org/)
-- [Tracing](https://crates.io/crates/tracing)
+- [Clap](https://crates.io/crates/clap)
 - [Serde](https://crates.io/crates/serde)
+- [Signal hook](https://crates.io/crates/signal_hook)
+- [Tracing](https://crates.io/crates/tracing)
 
 ## Credits
 

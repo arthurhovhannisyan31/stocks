@@ -1,3 +1,14 @@
+use clap::Parser;
+use common::utils::path_validation;
+use std::path::PathBuf;
+
+#[derive(Debug, Parser)]
+#[command(version, about, next_line_help = true)]
+pub(crate) struct CliArgs {
+  #[arg(short = 'f', long, value_name = "Tickers file", value_parser = path_validation)]
+  pub tickers_file: PathBuf,
+}
+
 pub(crate) mod consts {
   use std::net::{IpAddr, Ipv4Addr, SocketAddr};
   use std::time::Duration;
