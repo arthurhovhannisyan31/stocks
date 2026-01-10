@@ -257,10 +257,10 @@ name = "quote-server"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "clap",
  "common",
  "rand",
  "serde_json",
- "signal-hook",
  "tracing",
  "tracing-subscriber",
 ]

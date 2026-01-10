@@ -36,13 +36,14 @@ Server handles `TCP` requests with list of requested stock quotes and starts dat
 
 ## Usage
 
-Server binary does not require any cli arguments but the `tickers.txt` file should be provided. Current implementation
-requires the file be located at `.mocks/server-tickers.txt`.
+```shell
+quote-server -f tickers.txt 
+```
 
 ## Stack
 
 - [Rust](https://rust-lang.org/)
-- [Tracing](https://crates.io/crates/tracing)
+- [Clap](https://crates.io/crates/clap)
 - [Serde](https://crates.io/crates/serde)
 - [Signal hook](https://crates.io/crates/signal_hook)
 - [Tracing](https://crates.io/crates/tracing)

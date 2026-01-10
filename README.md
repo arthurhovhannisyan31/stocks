@@ -29,18 +29,20 @@ Download the archived binaries for your OS and use the `quote-server` and `quote
 folder.
 
 ```shell
-quote-server -f ./mocks/server-tickers.txt
+quote-server -f server-tickers.txt
 ```
 
 ```shell
-quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
+quote-client -f client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
 ```
 
 ## Stack
 
 - [Rust](https://rust-lang.org/)
-- [Tracing](https://crates.io/crates/tracing)
+- [Clap](https://crates.io/crates/clap)
 - [Serde](https://crates.io/crates/serde)
+- [Signal hook](https://crates.io/crates/signal_hook)
+- [Tracing](https://crates.io/crates/tracing)
 
 ## Credits
 

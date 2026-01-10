@@ -8,7 +8,9 @@
 
 ## Overview
 
-This is the stock quote client crate which requests and receives streamed stock quotes data. Each client requests a
+This is the stock quote client crate which requests and receives streamed stock quotes data.
+
+Each client requests a
 specific list of tickers from server, which are listed in the provided file.
 The file should have `txt` extension and tickers should be separated with a new line `\n`.
 
@@ -33,14 +35,13 @@ to [TERM_SIGNALS](https://docs.rs/signal-hook/latest/src/signal_hook/lib.rs.html
 ## Usage
 
 ```shell
-./target/release/quote-client -f ./mocks/client-tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
+quote-client -f tickers.txt -s 127.0.0.1:8000 -S 8001 -c 127.0.0.1:8002 
 ```
 
 ## Stack
 
 - [Rust](https://rust-lang.org/)
-- [Tracing](https://crates.io/crates/tracing)
-- [Serde](https://crates.io/crates/serde)
 - [Clap](https://crates.io/crates/clap)
-- [Tracing](https://crates.io/crates/tracing)
+- [Serde](https://crates.io/crates/serde)
 - [Signal hook](https://crates.io/crates/signal_hook)
+- [Tracing](https://crates.io/crates/tracing)
