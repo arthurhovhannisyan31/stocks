@@ -17,6 +17,14 @@ Server has `graceful shutdown` feature which listens
 to [TERM_SIGNALS](https://docs.rs/signal-hook/latest/src/signal_hook/lib.rs.html#406) system signals.
 Inactive clients are disconnected from data streaming using periodically sent `health-check` messages.
 
+## Synopsis
+
+- `-f, --tickers_file <PathBuf>` Path to tickers file
+
+
+- `--help`  Print help
+- `-V, --version`  Print version
+
 ## Description
 
 Server utilizes `TCP listener` for clients requests and sends back response using same `TCP stream`.

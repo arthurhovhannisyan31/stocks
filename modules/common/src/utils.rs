@@ -1,9 +1,15 @@
 use crate::error::AppError;
+use anyhow::Context;
 use signal_hook::{consts::TERM_SIGNALS, flag};
 use std::{
+  ffi::OsStr,
   fs::File,
+  io,
+  io::ErrorKind,
   io::{BufRead, BufReader},
+  net::SocketAddr,
   path::PathBuf,
+  str::FromStr,
   sync::Arc,
   sync::atomic::AtomicBool,
 };
@@ -23,7 +29,7 @@ use std::{
 /// }
 /// ```
 pub fn read_tickers(path: PathBuf) -> Result<Vec<String>, AppError> {
-  let tickers_file = File::open(path)?;
+  let tickers_file = File::open(path).context("Failed reading tickers file")?;
   let reader = BufReader::new(tickers_file);
   let lines = reader.lines();
   let tickers: Vec<String> = lines
@@ -45,4 +51,44 @@ pub fn register_signal_hooks(
   }
 
   Ok(())
+}
+
+pub(crate) const EXTENSION_WHITELIST: &[&str] = &["txt"];
+
+pub fn path_validation(str: &str) -> Result<PathBuf, AppError> {
+  let path =
+    PathBuf::from_str(str).expect("Failed reading provided path value");
+
+  if !path.exists() {
+    return Err(AppError::NotFound {
+      err: io::Error::new(
+        ErrorKind::NotFound,
+        "Failed reading provided file path",
+      ),
+      source_path: path,
+    });
+  }
+
+  if let Some(extension) = path.extension().and_then(OsStr::to_str) {
+    if EXTENSION_WHITELIST.contains(&extension) {
+      return Ok(path);
+    }
+  }
+
+  Err(AppError::Io(io::Error::new(
+    ErrorKind::InvalidFilename,
+    "Failed reading file extension",
+  )))
+}
+
+pub fn server_address_validation(str: &str) -> anyhow::Result<SocketAddr> {
+  let socket_addr = SocketAddr::from_str(str)?;
+
+  Ok(socket_addr)
+}
+
+pub fn port_validation(str: &str) -> anyhow::Result<u16> {
+  let port = str.parse::<u16>()?;
+
+  Ok(port)
 }

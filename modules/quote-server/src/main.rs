@@ -1,6 +1,7 @@
 use anyhow::{Context, anyhow};
-use common::error::AppError;
+use clap::Parser;
 use common::{
+  error::AppError,
   stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
   utils::{read_tickers, register_signal_hooks},
 };
@@ -21,7 +22,7 @@ use tracing::{error, info, warn};
 mod configs;
 mod quote;
 
-use configs::consts;
+use configs::{CliArgs, consts};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {
@@ -32,8 +33,10 @@ fn main() -> Result<(), AppError> {
 
   info!("Start server");
 
-  let tickers: Vec<String> =
-    read_tickers(PathBuf::from("./mocks/server-tickers.txt"))?;
+  let cli = CliArgs::parse();
+  let CliArgs { tickers_file } = cli;
+
+  let tickers: Vec<String> = read_tickers(PathBuf::from(tickers_file))?;
 
   let shutdown = Arc::new(AtomicBool::new(false));
   register_signal_hooks(&shutdown)?;

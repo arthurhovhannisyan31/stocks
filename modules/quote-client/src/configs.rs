@@ -1,9 +1,8 @@
 use clap::Parser;
-use common::error::AppError;
-use std::io::ErrorKind;
-use std::{ffi::OsStr, io, net::SocketAddr, path::PathBuf, str::FromStr};
-
-pub(crate) const EXTENSION_WHITELIST: &[&str] = &["txt"];
+use common::utils::{
+  path_validation, port_validation, server_address_validation,
+};
+use std::{net::SocketAddr, path::PathBuf};
 
 #[derive(Debug, Parser)]
 #[command(version, about, next_line_help = true)]
@@ -16,44 +15,6 @@ pub(crate) struct CliArgs {
   pub server_udp_port: u16,
   #[arg(short = 'c',long, value_name = "Client UDP address", value_parser = server_address_validation)]
   pub client_udp_addr: SocketAddr,
-}
-
-fn path_validation(str: &str) -> Result<PathBuf, AppError> {
-  let path =
-    PathBuf::from_str(str).expect("Failed reading provided path value");
-
-  if !path.exists() {
-    return Err(AppError::NotFound {
-      err: io::Error::new(
-        ErrorKind::NotFound,
-        "Failed reading provided file path",
-      ),
-      source_path: path,
-    });
-  }
-
-  if let Some(extension) = path.extension().and_then(OsStr::to_str) {
-    if EXTENSION_WHITELIST.contains(&extension) {
-      return Ok(path);
-    }
-  }
-
-  Err(AppError::Io(io::Error::new(
-    ErrorKind::InvalidFilename,
-    "Failed reading file extension",
-  )))
-}
-
-fn server_address_validation(str: &str) -> anyhow::Result<SocketAddr> {
-  let socket_addr = SocketAddr::from_str(str)?;
-
-  Ok(socket_addr)
-}
-
-fn port_validation(str: &str) -> anyhow::Result<u16> {
-  let port = str.parse::<u16>()?;
-
-  Ok(port)
 }
 
 pub(crate) mod consts {

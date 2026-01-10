@@ -29,7 +29,7 @@ Download the archived binaries for your OS and use the `quote-server` and `quote
 folder.
 
 ```shell
-quote-server
+quote-server -f ./mocks/server-tickers.txt
 ```
 
 ```shell
