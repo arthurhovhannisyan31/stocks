@@ -26,6 +26,10 @@ jobs:
           if ! which cargo-audit; then
             cargo install cargo-audit
           fi
+          if ! which cargo-msrv; then
+            cargo install cargo-msrv
+          fi
       - name: Validate packages
         run: |
-          cargo audit      
+          cargo audit
+          ./configs/scripts/cargo-msrv.sh

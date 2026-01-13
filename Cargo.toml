@@ -2,6 +2,14 @@
 resolver = "3"
 members = ["modules/common", "modules/quote-server", "modules/quote-client"]
 
+[workspace.package]
+version = "1.2.0"
+description = "Stock quotes streaming application"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/arthurhovhannisyan31/stocks"
+rust-version = "1.87.0"
+
 [workspace.dependencies]
 tracing = "0.1"
 tracing-subscriber = "0.3"
