@@ -18,3 +18,6 @@ serde_json = "1.0"
 anyhow = "1.0"
 signal-hook = "0.4"
 thiserror = "2.0"
+
+[workspace.lints]
+# To be continued ...

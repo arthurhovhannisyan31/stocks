@@ -13,3 +13,6 @@ common = { path = "../common" }
 anyhow.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 serde_json.workspace = true
+
+[lints]
+workspace = true
