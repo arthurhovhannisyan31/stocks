@@ -1,26 +1,28 @@
-use anyhow::{Context, anyhow};
-use clap::Parser;
-use common::error::AppError;
-use common::{
-  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
-  utils::{read_tickers, register_signal_hooks},
-};
-use serde_json::json;
-use signal_hook::{consts::SIGTERM, low_level::raise};
 use std::{
   io::{self, Read, Write},
   net::{SocketAddr, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::Ordering,
-  sync::{Arc, atomic::AtomicBool},
+  sync::{atomic::AtomicBool, Arc},
   thread,
   thread::JoinHandle,
 };
+
+use anyhow::{anyhow, Context};
+use clap::Parser;
+use serde_json::json;
+use signal_hook::{consts::SIGTERM, low_level::raise};
 use tracing::{error, info, warn};
+
+use common::{
+  error::AppError,
+  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
+  utils::{read_tickers, register_signal_hooks},
+};
 
 mod configs;
 
-use configs::{CliArgs, consts};
+use configs::{consts, CliArgs};
 
 fn main() -> Result<(), AppError> {
   tracing_subscriber::fmt()

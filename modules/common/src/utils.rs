@@ -1,6 +1,3 @@
-use crate::error::AppError;
-use anyhow::Context;
-use signal_hook::{consts::TERM_SIGNALS, flag};
 use std::{
   ffi::OsStr,
   fs::File,
@@ -10,9 +7,14 @@ use std::{
   net::SocketAddr,
   path::PathBuf,
   str::FromStr,
-  sync::Arc,
   sync::atomic::AtomicBool,
+  sync::Arc,
 };
+
+use anyhow::Context;
+use signal_hook::{consts::TERM_SIGNALS, flag};
+
+use crate::error::AppError;
 
 /// Read tickers from a file
 ///

@@ -1,11 +1,3 @@
-use anyhow::{Context, anyhow};
-use clap::Parser;
-use common::{
-  error::AppError,
-  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
-  utils::{read_tickers, register_signal_hooks},
-};
-use serde_json::json;
 use std::{
   collections::HashMap,
   io::{self, Read, Write},
@@ -13,16 +5,26 @@ use std::{
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
   sync::mpsc::channel,
-  sync::{Arc, RwLock, TryLockError, mpsc},
+  sync::{mpsc, Arc, RwLock, TryLockError},
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use anyhow::{anyhow, Context};
+use clap::Parser;
+use serde_json::json;
 use tracing::{error, info, warn};
+
+use common::{
+  error::AppError,
+  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
+  utils::{read_tickers, register_signal_hooks},
+};
 
 mod configs;
 mod quote;
 
-use configs::{CliArgs, consts};
+use configs::{consts, CliArgs};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {

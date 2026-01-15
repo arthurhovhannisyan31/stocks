@@ -1,6 +1,8 @@
-use clap::Parser;
-use common::utils::path_validation;
 use std::path::PathBuf;
+
+use clap::Parser;
+
+use common::utils::path_validation;
 
 #[derive(Debug, Parser)]
 #[command(version, about, next_line_help = true)]
