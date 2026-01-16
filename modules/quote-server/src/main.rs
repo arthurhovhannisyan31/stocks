@@ -1,17 +1,17 @@
+use anyhow::{anyhow, Context};
+use clap::Parser;
+use serde_json::json;
+use std::time::Instant;
 use std::{
   collections::HashMap,
   io::{self, Read, Write},
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::{Arc, RwLock, TryLockError, mpsc},
+  sync::{mpsc, Arc, RwLock, TryLockError},
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
-
-use anyhow::{Context, anyhow};
-use clap::Parser;
-use serde_json::json;
 use tracing::{error, info, warn};
 
 use common::{
@@ -23,7 +23,7 @@ use common::{
 mod configs;
 mod quote;
 
-use configs::{CliArgs, consts};
+use configs::{consts, CliArgs};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {
@@ -59,8 +59,7 @@ fn main() -> Result<(), AppError> {
 type StockQuoteList = Arc<RwLock<Vec<StockQuote>>>;
 type ClientChannelsMap =
   Arc<RwLock<HashMap<SocketAddr, mpsc::SyncSender<StockQuoteList>>>>;
-// Store client address with latest activity timestamp (u64 as secs)
-type HealthCheckMap = Arc<RwLock<HashMap<SocketAddr, u64>>>;
+type HealthCheckMap = Arc<RwLock<HashMap<SocketAddr, Instant>>>;
 
 #[derive(Debug)]
 struct Server {
@@ -262,7 +261,7 @@ impl Server {
           .health_check_map
           .write()
           .expect("Failed locking health_check_map for write");
-        healthcheck_map.insert(addr, now.as_secs());
+        healthcheck_map.insert(addr, Instant::now());
 
         response = StockResponse {
           status: StockResponseStatus::Ok,
@@ -347,13 +346,10 @@ impl Server {
               .write()
               .expect("Failed locking client_channel_map with read access");
 
-            for (addr, timestamp) in healthcheck_map.iter() {
+            for (addr, instant) in healthcheck_map.iter() {
               if client_channel_map.contains_key(addr) {
-                let latest_timestamp =
-                  SystemTime::UNIX_EPOCH + Duration::from_secs(*timestamp);
-                let diff = now
-                  .duration_since(latest_timestamp)
-                  .context("Failed reading timestamp difference")?;
+                let current = Instant::now();
+                let diff = current.duration_since(*instant);
 
                 if diff > consts::HEALTHCHECK_TIMEOUT {
                   client_channel_map.remove(addr);
@@ -398,11 +394,8 @@ impl Server {
             let mut health_check_map = health_check_map
               .write()
               .expect("Failed reading health_check_map RwLock");
-            if let Some(timestamp) = health_check_map.get_mut(&from) {
-              *timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .context("Failed reading SystemTime duration since UNIX_EPOCH")?
-                .as_secs();
+            if let Some(instant) = health_check_map.get_mut(&from) {
+              *instant = Instant::now();
             }
           }
           Err(e)
