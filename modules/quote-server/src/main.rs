@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
 use clap::Parser;
+use parking_lot::RwLock;
 use serde_json::json;
 use std::{
   collections::HashMap,
@@ -7,7 +8,7 @@ use std::{
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::{mpsc, Arc, RwLock, TryLockError},
+  sync::{mpsc, Arc, TryLockError},
   thread,
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -146,9 +147,7 @@ impl Server {
 
     thread::spawn(move || {
       while let Ok(msg) = rx.recv() {
-        let client_channel_map = client_channel_map
-          .read()
-          .expect("Failed obtaining client_channel_map lock");
+        let client_channel_map = client_channel_map.read();
 
         for (_, tx) in client_channel_map.iter() {
           match tx.send(Arc::clone(&msg)) {
@@ -179,8 +178,7 @@ impl Server {
         quote_generator.shuffle_prices();
         let new_quotes_list = quote_generator.generate_quote_list();
         {
-          let mut mut_quotes_list =
-            quotes_list.write().expect("Failed to get mut quotes_list");
+          let mut mut_quotes_list = quotes_list.write();
           *mut_quotes_list = new_quotes_list
         }
 
@@ -256,10 +254,7 @@ impl Server {
         let now = SystemTime::now()
           .duration_since(UNIX_EPOCH)
           .context("Failed reading SystemTime duration since UNIX_EPOCH")?;
-        let healthcheck_map = &mut self
-          .health_check_map
-          .write()
-          .expect("Failed locking health_check_map for write");
+        let healthcheck_map = &mut self.health_check_map.write();
         healthcheck_map.insert(addr, Instant::now());
 
         response = StockResponse {
@@ -298,19 +293,14 @@ impl Server {
       .map_err(|err| AppError::UdpSocketError { err })?;
     let (tx, rx) = mpsc::sync_channel::<StockQuoteList>(1);
     {
-      let client_channel_map = &mut self
-        .client_channel_map
-        .write()
-        .expect("Failed obtaining client_channel_map lock");
+      let client_channel_map = &mut self.client_channel_map.write();
       client_channel_map.insert(addr, tx);
     }
 
     thread::spawn(move || -> Result<(), AppError> {
       while let Ok(quotes) = rx.recv() {
         let filtered_quotes: Vec<StockQuote> = {
-          let quotes = quotes
-            .read()
-            .expect("Failed reading stock quotes list from RwLock");
+          let quotes = quotes.read();
 
           quotes
             .iter()
@@ -338,51 +328,43 @@ impl Server {
   fn start_healthcheck_monitoring(
     &self,
   ) -> Result<thread::JoinHandle<Result<(), AppError>>, AppError> {
-    let health_check_map = Arc::clone(&self.health_check_map);
+    let health_check_map_lock = Arc::clone(&self.health_check_map);
     let client_channel_map = Arc::clone(&self.client_channel_map);
     let shutdown = Arc::clone(&self.shutdown);
 
     Ok(thread::spawn(move || {
       while !shutdown.load(Ordering::Acquire) {
-        // Health check monitoring has low priority, hence can be skipped sometimes
-        // Health check map should be blocked as less as possible to give access to other writers
-        match health_check_map.try_write() {
-          Ok(mut health_check_map) => {
-            if health_check_map.is_empty() {
-              continue;
-            }
+        {
+          let mut health_check_map = health_check_map_lock.upgradable_read();
 
-            let current = Instant::now();
-            let remove_list: Vec<SocketAddr> = health_check_map
-              .iter()
-              .filter_map(|(addr, instant)| {
-                let diff = current.duration_since(*instant);
+          if health_check_map.is_empty() {
+            continue;
+          }
 
-                if diff > consts::HEALTHCHECK_TIMEOUT {
-                  warn!(addr = %addr, "Client is disconnected:");
+          let current = Instant::now();
+          let remove_list: Vec<SocketAddr> = health_check_map
+            .iter()
+            .filter_map(|(addr, instant)| {
+              let diff = current.duration_since(*instant);
 
-                  return Some(*addr);
-                }
+              if diff > consts::HEALTHCHECK_TIMEOUT {
+                warn!(addr = %addr, "Client is disconnected:");
 
-                None
-              })
-              .collect();
+                return Some(*addr);
+              }
 
-            let mut client_channel_map = client_channel_map
-              .write()
-              .expect("Failed locking client_channel_map with read access");
+              None
+            })
+            .collect();
 
+          let mut client_channel_map = client_channel_map.write();
+
+          health_check_map.with_upgraded(|h| {
             for addr in remove_list {
-              health_check_map.remove(&addr);
+              h.remove(&addr);
               client_channel_map.remove(&addr);
             }
-          }
-          Err(TryLockError::WouldBlock) => {
-            // Resource is blocked with write access, skip to next iteration
-          }
-          Err(TryLockError::Poisoned(e)) => {
-            return Err(e).expect("Failed reading from healthcheck_map");
-          }
+          });
         }
 
         thread::sleep(consts::HEALTH_CHECK_MONITOR_TIMEOUT);
@@ -410,9 +392,7 @@ impl Server {
         match udp.recv_from(&mut buf) {
           Ok((_, from)) => {
             // update client activity timestamp
-            let mut health_check_map = health_check_map
-              .write()
-              .expect("Failed reading health_check_map RwLock");
+            let mut health_check_map = health_check_map.write();
             if let Some(instant) = health_check_map.get_mut(&from) {
               *instant = Instant::now();
             }
