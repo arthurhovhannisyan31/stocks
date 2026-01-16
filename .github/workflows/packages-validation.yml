@@ -21,13 +21,13 @@ jobs:
       - name: Setup stable Rust version
         run: |
           rustup toolchain install stable --profile minimal
-      - name: Install Cargo audit
+      - name: Install Cargo binaries
         run: |
           if ! which cargo-audit; then
-            cargo install cargo-audit
+            cargo install cargo-audit --locked
           fi
           if ! which cargo-msrv; then
-            cargo install cargo-msrv
+            cargo install cargo-msrv --locked
           fi
       - name: Validate packages
         run: |
