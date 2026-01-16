@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use clap::Parser;
 use serde_json::json;
 use std::{
@@ -7,7 +7,7 @@ use std::{
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::{Arc, RwLock, TryLockError, mpsc},
+  sync::{mpsc, Arc, RwLock, TryLockError},
   thread,
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -22,7 +22,7 @@ use common::{
 mod configs;
 mod quote;
 
-use configs::{CliArgs, consts};
+use configs::{consts, CliArgs};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {
@@ -307,14 +307,22 @@ impl Server {
 
     thread::spawn(move || -> Result<(), AppError> {
       while let Ok(quotes) = rx.recv() {
-        let quotes = quotes
-          .read()
-          .expect("Failed reading stock quotes list from RwLock");
+        let filtered_quotes: Vec<StockQuote> = {
+          let quotes = quotes
+            .read()
+            .expect("Failed reading stock quotes list from RwLock");
 
-        let filtered_quotes: Vec<&StockQuote> = quotes
-          .iter()
-          .filter(|el| requested_tickers.contains(&el.ticker))
-          .collect();
+          quotes
+            .iter()
+            .filter_map(|el| {
+              if requested_tickers.contains(&el.ticker) {
+                return Some(el.clone());
+              }
+              None
+            })
+            .collect()
+        };
+
         let message = json!(filtered_quotes).to_string();
 
         udp
