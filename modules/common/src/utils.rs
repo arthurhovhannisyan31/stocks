@@ -7,8 +7,8 @@ use std::{
   net::SocketAddr,
   path::PathBuf,
   str::FromStr,
-  sync::atomic::AtomicBool,
   sync::Arc,
+  sync::atomic::AtomicBool,
 };
 
 use anyhow::Context;

@@ -3,12 +3,12 @@ use std::{
   net::{SocketAddr, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::Ordering,
-  sync::{atomic::AtomicBool, Arc},
+  sync::{Arc, atomic::AtomicBool},
   thread,
   thread::JoinHandle,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Parser;
 use serde_json::json;
 use signal_hook::{consts::SIGTERM, low_level::raise};
@@ -22,7 +22,7 @@ use common::{
 
 mod configs;
 
-use configs::{consts, CliArgs};
+use configs::{CliArgs, consts};
 
 fn main() -> Result<(), AppError> {
   tracing_subscriber::fmt()

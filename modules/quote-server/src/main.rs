@@ -4,13 +4,12 @@ use std::{
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::mpsc::channel,
-  sync::{mpsc, Arc, RwLock, TryLockError},
+  sync::{Arc, RwLock, TryLockError, mpsc},
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Parser;
 use serde_json::json;
 use tracing::{error, info, warn};
@@ -24,7 +23,7 @@ use common::{
 mod configs;
 mod quote;
 
-use configs::{consts, CliArgs};
+use configs::{CliArgs, consts};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {
@@ -59,7 +58,7 @@ fn main() -> Result<(), AppError> {
 
 type StockQuoteList = Arc<RwLock<Vec<StockQuote>>>;
 type ClientChannelsMap =
-  Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<StockQuoteList>>>>;
+  Arc<RwLock<HashMap<SocketAddr, mpsc::SyncSender<StockQuoteList>>>>;
 // Store client address with latest activity timestamp (u64 as secs)
 type HealthCheckMap = Arc<RwLock<HashMap<SocketAddr, u64>>>;
 
@@ -110,7 +109,7 @@ impl Server {
   fn run(&self) -> Result<(), AppError> {
     info!("Run server");
 
-    let (tx, rx) = channel::<StockQuoteList>();
+    let (tx, rx) = mpsc::sync_channel::<StockQuoteList>(1);
     let quotes_broadcasting = self.broadcast_quotes_to_channels(rx);
     let healthcheck_server = self.start_healthcheck_server()?;
     let healthcheck_monitoring = self.start_healthcheck_monitoring()?;
@@ -168,7 +167,7 @@ impl Server {
   }
   fn start_quotes_generation(
     &self,
-    tx: mpsc::Sender<StockQuoteList>,
+    tx: mpsc::SyncSender<StockQuoteList>,
   ) -> thread::JoinHandle<Result<(), AppError>> {
     info!("Start quotes generation");
 
@@ -299,7 +298,7 @@ impl Server {
       .udp
       .try_clone()
       .map_err(|err| AppError::UdpSocketError { err })?;
-    let (tx, rx) = channel::<StockQuoteList>();
+    let (tx, rx) = mpsc::sync_channel::<StockQuoteList>(1);
     {
       let client_channel_map = &mut self
         .client_channel_map
