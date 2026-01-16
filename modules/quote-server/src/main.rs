@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Parser;
 use parking_lot::RwLock;
 use serde_json::json;
@@ -8,7 +8,7 @@ use std::{
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::{mpsc, Arc, TryLockError},
+  sync::{Arc, TryLockError, mpsc},
   thread,
   time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -23,7 +23,7 @@ use common::{
 mod configs;
 mod quote;
 
-use configs::{consts, CliArgs};
+use configs::{CliArgs, consts};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {
