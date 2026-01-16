@@ -1,16 +1,15 @@
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Parser;
 use serde_json::json;
-use std::time::Instant;
 use std::{
   collections::HashMap,
   io::{self, Read, Write},
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::{mpsc, Arc, RwLock, TryLockError},
+  sync::{Arc, RwLock, TryLockError, mpsc},
   thread,
-  time::{Duration, SystemTime, UNIX_EPOCH},
+  time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tracing::{error, info, warn};
 
@@ -23,7 +22,7 @@ use common::{
 mod configs;
 mod quote;
 
-use configs::{consts, CliArgs};
+use configs::{CliArgs, consts};
 use quote::QuoteGenerator;
 
 fn main() -> Result<(), AppError> {
@@ -337,25 +336,37 @@ impl Server {
 
     Ok(thread::spawn(move || {
       while !shutdown.load(Ordering::Acquire) {
-        // Avoid deadlock using try_read
-        // Read access has lower priority than write hence can be skipped
-        match health_check_map.try_read() {
-          Ok(healthcheck_map) => {
-            let now = SystemTime::now();
+        // Health check monitoring has low priority, hence can be skipped sometimes
+        // Health check map should be blocked as less as possible to give access to other writers
+        match health_check_map.try_write() {
+          Ok(mut health_check_map) => {
+            if health_check_map.is_empty() {
+              continue;
+            }
+
+            let current = Instant::now();
+            let remove_list: Vec<SocketAddr> = health_check_map
+              .iter()
+              .filter_map(|(addr, instant)| {
+                let diff = current.duration_since(*instant);
+
+                if diff > consts::HEALTHCHECK_TIMEOUT {
+                  warn!(addr = %addr, "Client is disconnected:");
+
+                  return Some(*addr);
+                }
+
+                None
+              })
+              .collect();
+
             let mut client_channel_map = client_channel_map
               .write()
               .expect("Failed locking client_channel_map with read access");
 
-            for (addr, instant) in healthcheck_map.iter() {
-              if client_channel_map.contains_key(addr) {
-                let current = Instant::now();
-                let diff = current.duration_since(*instant);
-
-                if diff > consts::HEALTHCHECK_TIMEOUT {
-                  client_channel_map.remove(addr);
-                  warn!(addr = %addr, "Client is disconnected:");
-                }
-              }
+            for addr in remove_list {
+              health_check_map.remove(&addr);
+              client_channel_map.remove(&addr);
             }
           }
           Err(TryLockError::WouldBlock) => {
