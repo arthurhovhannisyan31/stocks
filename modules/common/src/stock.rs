@@ -1,5 +1,6 @@
-use serde;
 use std::net::SocketAddr;
+
+use serde;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StockQuote {

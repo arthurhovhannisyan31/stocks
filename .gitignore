@@ -6,6 +6,7 @@
 /.idea
 
 # local
-notes
+**/*notes
+
 report_examples
 temp

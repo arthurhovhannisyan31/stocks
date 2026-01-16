@@ -3,8 +3,9 @@ use std::{
   time::{SystemTime, UNIX_EPOCH},
 };
 
-use common::stock::StockQuote;
 use rand::Rng;
+
+use common::stock::StockQuote;
 
 use crate::configs::consts;
 

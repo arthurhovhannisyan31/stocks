@@ -1,10 +1,6 @@
 use anyhow::{Context, anyhow};
 use clap::Parser;
-use common::{
-  error::AppError,
-  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
-  utils::{read_tickers, register_signal_hooks},
-};
+use parking_lot::RwLock;
 use serde_json::json;
 use std::{
   collections::HashMap,
@@ -12,12 +8,17 @@ use std::{
   net::{SocketAddr, TcpListener, TcpStream, UdpSocket},
   path::PathBuf,
   sync::atomic::{AtomicBool, Ordering},
-  sync::mpsc::channel,
-  sync::{Arc, RwLock, TryLockError, mpsc},
+  sync::{Arc, TryLockError, mpsc},
   thread,
-  time::{Duration, SystemTime, UNIX_EPOCH},
+  time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tracing::{error, info, warn};
+
+use common::{
+  error::AppError,
+  stock::{StockQuote, StockRequest, StockResponse, StockResponseStatus},
+  utils::{read_tickers, register_signal_hooks},
+};
 
 mod configs;
 mod quote;
@@ -57,9 +58,8 @@ fn main() -> Result<(), AppError> {
 
 type StockQuoteList = Arc<RwLock<Vec<StockQuote>>>;
 type ClientChannelsMap =
-  Arc<RwLock<HashMap<SocketAddr, mpsc::Sender<StockQuoteList>>>>;
-// Store client address with latest activity timestamp (u64 as secs)
-type HealthCheckMap = Arc<RwLock<HashMap<SocketAddr, u64>>>;
+  Arc<RwLock<HashMap<SocketAddr, mpsc::SyncSender<StockQuoteList>>>>;
+type HealthCheckMap = Arc<RwLock<HashMap<SocketAddr, Instant>>>;
 
 #[derive(Debug)]
 struct Server {
@@ -108,7 +108,7 @@ impl Server {
   fn run(&self) -> Result<(), AppError> {
     info!("Run server");
 
-    let (tx, rx) = channel::<StockQuoteList>();
+    let (tx, rx) = mpsc::sync_channel::<StockQuoteList>(1);
     let quotes_broadcasting = self.broadcast_quotes_to_channels(rx);
     let healthcheck_server = self.start_healthcheck_server()?;
     let healthcheck_monitoring = self.start_healthcheck_monitoring()?;
@@ -147,9 +147,7 @@ impl Server {
 
     thread::spawn(move || {
       while let Ok(msg) = rx.recv() {
-        let client_channel_map = client_channel_map
-          .read()
-          .expect("Failed obtaining client_channel_map lock");
+        let client_channel_map = client_channel_map.read();
 
         for (_, tx) in client_channel_map.iter() {
           match tx.send(Arc::clone(&msg)) {
@@ -166,7 +164,7 @@ impl Server {
   }
   fn start_quotes_generation(
     &self,
-    tx: mpsc::Sender<StockQuoteList>,
+    tx: mpsc::SyncSender<StockQuoteList>,
   ) -> thread::JoinHandle<Result<(), AppError>> {
     info!("Start quotes generation");
 
@@ -180,8 +178,7 @@ impl Server {
         quote_generator.shuffle_prices();
         let new_quotes_list = quote_generator.generate_quote_list();
         {
-          let mut mut_quotes_list =
-            quotes_list.write().expect("Failed to get mut quotes_list");
+          let mut mut_quotes_list = quotes_list.write();
           *mut_quotes_list = new_quotes_list
         }
 
@@ -257,11 +254,8 @@ impl Server {
         let now = SystemTime::now()
           .duration_since(UNIX_EPOCH)
           .context("Failed reading SystemTime duration since UNIX_EPOCH")?;
-        let healthcheck_map = &mut self
-          .health_check_map
-          .write()
-          .expect("Failed locking health_check_map for write");
-        healthcheck_map.insert(addr, now.as_secs());
+        let healthcheck_map = &mut self.health_check_map.write();
+        healthcheck_map.insert(addr, Instant::now());
 
         response = StockResponse {
           status: StockResponseStatus::Ok,
@@ -297,25 +291,28 @@ impl Server {
       .udp
       .try_clone()
       .map_err(|err| AppError::UdpSocketError { err })?;
-    let (tx, rx) = channel::<StockQuoteList>();
+    let (tx, rx) = mpsc::sync_channel::<StockQuoteList>(1);
     {
-      let client_channel_map = &mut self
-        .client_channel_map
-        .write()
-        .expect("Failed obtaining client_channel_map lock");
+      let client_channel_map = &mut self.client_channel_map.write();
       client_channel_map.insert(addr, tx);
     }
 
     thread::spawn(move || -> Result<(), AppError> {
       while let Ok(quotes) = rx.recv() {
-        let quotes = quotes
-          .read()
-          .expect("Failed reading stock quotes list from RwLock");
+        let filtered_quotes: Vec<StockQuote> = {
+          let quotes = quotes.read();
 
-        let filtered_quotes: Vec<&StockQuote> = quotes
-          .iter()
-          .filter(|el| requested_tickers.contains(&el.ticker))
-          .collect();
+          quotes
+            .iter()
+            .filter_map(|el| {
+              if requested_tickers.contains(&el.ticker) {
+                return Some(el.clone());
+              }
+              None
+            })
+            .collect()
+        };
+
         let message = json!(filtered_quotes).to_string();
 
         udp
@@ -331,42 +328,43 @@ impl Server {
   fn start_healthcheck_monitoring(
     &self,
   ) -> Result<thread::JoinHandle<Result<(), AppError>>, AppError> {
-    let health_check_map = Arc::clone(&self.health_check_map);
+    let health_check_map_lock = Arc::clone(&self.health_check_map);
     let client_channel_map = Arc::clone(&self.client_channel_map);
     let shutdown = Arc::clone(&self.shutdown);
 
     Ok(thread::spawn(move || {
       while !shutdown.load(Ordering::Acquire) {
-        // Avoid deadlock using try_read
-        // Read access has lower priority than write hence can be skipped
-        match health_check_map.try_read() {
-          Ok(healthcheck_map) => {
-            let now = SystemTime::now();
-            let mut client_channel_map = client_channel_map
-              .write()
-              .expect("Failed locking client_channel_map with read access");
+        {
+          let mut health_check_map = health_check_map_lock.upgradable_read();
 
-            for (addr, timestamp) in healthcheck_map.iter() {
-              if client_channel_map.contains_key(addr) {
-                let latest_timestamp =
-                  SystemTime::UNIX_EPOCH + Duration::from_secs(*timestamp);
-                let diff = now
-                  .duration_since(latest_timestamp)
-                  .context("Failed reading timestamp difference")?;
+          if health_check_map.is_empty() {
+            continue;
+          }
 
-                if diff > consts::HEALTHCHECK_TIMEOUT {
-                  client_channel_map.remove(addr);
-                  warn!(addr = %addr, "Client is disconnected:");
-                }
+          let current = Instant::now();
+          let remove_list: Vec<SocketAddr> = health_check_map
+            .iter()
+            .filter_map(|(addr, instant)| {
+              let diff = current.duration_since(*instant);
+
+              if diff > consts::HEALTHCHECK_TIMEOUT {
+                warn!(addr = %addr, "Client is disconnected:");
+
+                return Some(*addr);
               }
+
+              None
+            })
+            .collect();
+
+          let mut client_channel_map = client_channel_map.write();
+
+          health_check_map.with_upgraded(|h| {
+            for addr in remove_list {
+              h.remove(&addr);
+              client_channel_map.remove(&addr);
             }
-          }
-          Err(TryLockError::WouldBlock) => {
-            // Resource is blocked with write access, skip to next iteration
-          }
-          Err(TryLockError::Poisoned(e)) => {
-            return Err(e).expect("Failed reading from healthcheck_map");
-          }
+          });
         }
 
         thread::sleep(consts::HEALTH_CHECK_MONITOR_TIMEOUT);
@@ -394,14 +392,9 @@ impl Server {
         match udp.recv_from(&mut buf) {
           Ok((_, from)) => {
             // update client activity timestamp
-            let mut health_check_map = health_check_map
-              .write()
-              .expect("Failed reading health_check_map RwLock");
-            if let Some(timestamp) = health_check_map.get_mut(&from) {
-              *timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .context("Failed reading SystemTime duration since UNIX_EPOCH")?
-                .as_secs();
+            let mut health_check_map = health_check_map.write();
+            if let Some(instant) = health_check_map.get_mut(&from) {
+              *instant = Instant::now();
             }
           }
           Err(e)
