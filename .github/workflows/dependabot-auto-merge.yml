@@ -11,11 +11,6 @@ jobs:
       - name: Dependabot metadata
         id: dependabot-metadata
         uses: dependabot/fetch-metadata@v2
-      - name: Print fetch metadata
-        run: |
-          echo "${{ toJSON(steps.dependabot-metadata.outputs) }}"
-          echo "${{ toJSON(github.event.pull_request.user) }}"
-          echo "${{ toJSON(github.repository) }}"
       - name: Enable auto-merge for Dependabot PRs
         if: ${{steps.dependabot-metadata.outputs.update-type == 'version-update:semver-patch'}}
         run: gh pr merge --auto --merge "${{github.event.pull_request.html_url}}"
