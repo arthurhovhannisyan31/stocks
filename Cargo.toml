@@ -19,5 +19,8 @@ anyhow = "1.0"
 signal-hook = "0.4"
 thiserror = "2.0"
 
+[profile.release]
+lto = "thin"
+
 [workspace.lints]
 # To be continued ...
