@@ -32,13 +32,12 @@ fn main() -> Result<(), AppError> {
 
   info!("Start client");
 
-  let cli = CliArgs::parse();
   let CliArgs {
     client_udp_addr,
     server_tcp_addr,
     server_udp_port,
     tickers_file,
-  } = cli;
+  } = CliArgs::parse();
 
   let tickers: Vec<String> = read_tickers(PathBuf::from(tickers_file))?;
 
