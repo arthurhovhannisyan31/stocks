@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. "./.husky/configs/colors"
+. "./configs/bash/colors"
 
 cargo fmt -- --check
 
